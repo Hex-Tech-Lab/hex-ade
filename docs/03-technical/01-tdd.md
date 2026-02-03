@@ -1,7 +1,32 @@
 # hex-ade Technical Design Document (TDD)
-**Version**: 1.0
+**Version**: 1.1
 **Date**: 2026-02-03
 **Status**: Draft
+
+---
+
+## 0. Implementation Strategy
+
+**THIS IS A PORT, NOT A BUILD FROM SCRATCH.**
+
+### Source
+```
+_reference/autocoder/
+├── agent.py              → Core agent logic
+├── parallel_orchestrator.py → Multi-agent orchestration (77KB)
+├── client.py             → Claude SDK client
+├── server/               → FastAPI backend
+├── api/                  → Database layer
+├── ui/                   → React/Vite frontend (TO BE REDESIGNED)
+├── mcp_server/           → MCP integration
+└── prompts.py            → Prompt templates
+```
+
+### Approach
+1. **Backend**: Copy as-is, minimal changes
+2. **UI**: Complete redesign (MUI + Tailwind)
+3. **Database**: Port SQLite → Supabase
+4. **Deploy**: Local-first, then Vercel
 
 ---
 
