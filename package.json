@@ -1,0 +1,17 @@
+{
+  "name": "hex-ade",
+  "version": "0.1.0",
+  "description": "Hexagonal Autonomous Development Environment",
+  "private": true,
+  "scripts": {
+    "dev": "pnpm --filter web dev",
+    "build": "pnpm --filter web build",
+    "lint": "pnpm --filter web lint",
+    "test:unit": "pnpm --filter web test:unit",
+    "test:e2e": "pnpm --filter web test:e2e",
+    "type-check": "pnpm --filter web type-check"
+  },
+  "keywords": ["ai", "development", "automation", "gotcha", "atlas-vm"],
+  "author": "Kelly B.",
+  "license": "MIT"
+}
