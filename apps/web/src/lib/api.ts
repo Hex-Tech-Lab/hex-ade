@@ -34,7 +34,7 @@ import type {
   NextRunResponse,
 } from './types'
 
-const API_BASE = '/api'
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'https://hex-ade-api.onrender.com/api'
 
 async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${url}`, {
