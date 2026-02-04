@@ -102,9 +102,9 @@ export default function Home() {
   }
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', width: '100vw', bgcolor: '#020617', color: '#f8fafc', overflow: 'hidden' }}>
+    <Box sx={{ display: 'flex', minHeight: '100vh', width: '100%', bgcolor: '#020617', color: '#f8fafc' }}>
       {/* Side Slim Rail */}
-      <Box sx={{ width: 48, borderRight: '1px solid #1e293b', display: 'flex', flexDirection: 'column', alignItems: 'center', py: 2, gap: 3, bgcolor: '#0f172a' }}>
+      <Box sx={{ width: 48, borderRight: '1px solid #1e293b', display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'center', py: 2, gap: 3, bgcolor: '#0f172a' }}>
          <DashIcon sx={{ color: 'primary.main', fontSize: 24 }} />
          <LayersIcon sx={{ color: '#64748b', fontSize: 20 }} />
       </Box>
@@ -127,10 +127,10 @@ export default function Home() {
                 onSelectProject={setSelectedProject} 
                 isLoading={projectsLoading} 
               />
-              <IconButton size="small" color={agentStatus === 'running' ? 'error' : 'primary'} onClick={() => setAgentStatus(agentStatus === 'running' ? 'stopped' : 'running')}>
+              <IconButton size="small" color={agentStatus === 'running' ? 'error' : 'primary'} onClick={() => setAgentStatus(agentStatus === 'running' ? 'stopped' : 'running')} sx={{ '&:focus': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}>
                 {agentStatus === 'running' ? <StopIcon fontSize="small" /> : <PlayIcon fontSize="small" />}
               </IconButton>
-              <IconButton size="small" onClick={() => setChatOpen(!chatOpen)} color={chatOpen ? 'primary' : 'default'}>
+              <IconButton size="small" onClick={() => setChatOpen(!chatOpen)} color={chatOpen ? 'primary' : 'default'} sx={{ '&:focus': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}>
                 <ChatIcon fontSize="small" />
               </IconButton>
             </Stack>
@@ -146,7 +146,7 @@ export default function Home() {
         <FeedbackPanel messages={mockFeedback} />
 
         {/* Board */}
-        <Box sx={{ flex: 1, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'hidden' }}>
+        <Box sx={{ flex: 1, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'auto' }}>
           <Box sx={{ flex: 1, overflow: 'hidden' }}>
             <KanbanBoard 
               pending={featuresData?.pending || []} 

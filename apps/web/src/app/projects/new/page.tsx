@@ -23,6 +23,7 @@ import {
   MenuItem,
   Alert,
   CircularProgress,
+  Backdrop,
 } from '@mui/material';
 import {
   ArrowBack as ArrowBackIcon,
@@ -103,7 +104,17 @@ export default function NewProjectPage() {
         ))}
       </Stepper>
 
-      <Paper sx={{ p: 4 }}>
+      <Paper sx={{ p: 4, position: 'relative' }}>
+        <Backdrop
+          sx={{ position: 'absolute', bgcolor: 'rgba(0, 0, 0, 0.5)', zIndex: (theme) => theme.zIndex.drawer + 1, borderRadius: 1 }}
+          open={loading}
+        >
+          <Stack alignItems="center" spacing={2}>
+            <CircularProgress />
+            <Typography color="white">Creating project...</Typography>
+          </Stack>
+        </Backdrop>
+
         {error && (
           <Alert severity="error" sx={{ mb: 3 }}>
             {error}
@@ -118,6 +129,7 @@ export default function NewProjectPage() {
             <TextField
               label="Project Name"
               fullWidth
+              disabled={loading}
               value={formData.name}
               onChange={(e) => setFormData({ ...formData, name: e.target.value })}
               helperText="A unique name for your project"
@@ -125,6 +137,7 @@ export default function NewProjectPage() {
             <TextField
               label="Project Path"
               fullWidth
+              disabled={loading}
               value={formData.path}
               onChange={(e) => setFormData({ ...formData, path: e.target.value })}
               helperText="Absolute path to the project directory"
@@ -138,7 +151,7 @@ export default function NewProjectPage() {
             <Typography variant="h6" gutterBottom>
               Configuration
             </Typography>
-            <FormControl fullWidth>
+            <FormControl fullWidth disabled={loading}>
               <InputLabel>Default Concurrency</InputLabel>
               <Select
                 value={formData.concurrency}
