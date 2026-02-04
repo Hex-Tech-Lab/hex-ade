@@ -55,6 +55,3 @@ pnpm test:e2e
 6. VALIDATE - Review classification
 7. MEMORY - Persist learnings
 
-## License
-
-MIT
