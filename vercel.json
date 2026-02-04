@@ -3,5 +3,11 @@
   "installCommand": "pnpm install",
   "framework": "nextjs",
   "outputDirectory": "apps/web/.next",
-  "alias": ["ade.getmytestdrive.com"]
+  "alias": ["ade.getmytestdrive.com"],
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "https://hex-ade-api.onrender.com/api/:path*"
+    }
+  ]
 }
