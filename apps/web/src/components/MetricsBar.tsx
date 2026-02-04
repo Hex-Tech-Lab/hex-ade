@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { Box, Typography, LinearProgress, CircularProgress, useTheme } from '@mui/material';
+import { Box, Typography, LinearProgress, CircularProgress, useTheme, Stack, Divider } from '@mui/material';
 import {
   AccountBalanceWallet as WalletIcon,
   CheckCircle as CheckCircleIcon,
@@ -95,5 +95,3 @@ export function MetricsBar({
     </Box>
   );
 }
-
-import { Stack, Divider } from '@mui/material';

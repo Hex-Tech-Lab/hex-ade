@@ -18,6 +18,7 @@ interface FeatureCardProps {
   onClick: () => void;
   isInProgress?: boolean;
   activeAgent?: ActiveAgent;
+  allFeatures?: Feature[];
 }
 
 const getCategoryColor = (category: string): string => {
@@ -30,7 +31,7 @@ const getCategoryColor = (category: string): string => {
   return colors[category] || '#94a3b8';
 };
 
-export function FeatureCard({ feature, onClick, isInProgress, activeAgent }: FeatureCardProps) {
+export function FeatureCard({ feature, onClick, isInProgress, activeAgent, allFeatures }: FeatureCardProps) {
   const theme = useTheme();
   const categoryColor = getCategoryColor(feature.category);
   const isBlocked = feature.blocked || (feature.blocking_dependencies && feature.blocking_dependencies.length > 0);
