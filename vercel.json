@@ -3,14 +3,5 @@
   "installCommand": "pnpm install",
   "framework": "nextjs",
   "outputDirectory": "apps/web/.next",
-  "alias": ["ade.getmytestdrive.com"],
-  "regions": ["fra1"],
-  "functions": {
-    "apps/web/pages/api/**": {
-      "memory": 1024,
-      "maxDuration": 60,
-      "runtime": "nodejs20.x",
-      "region": ["fra1"]
-    }
-  }
+  "alias": ["ade.getmytestdrive.com"]
 }
