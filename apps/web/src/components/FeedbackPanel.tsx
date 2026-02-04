@@ -6,13 +6,8 @@
  */
 
 import React from 'react';
-import { Box, Typography, keyframes } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 import { Terminal as TerminalIcon } from '@mui/icons-material';
-
-const scanline = keyframes`
-  0% { transform: translateY(-100%); }
-  100% { transform: translateY(100%); }
-`;
 
 interface FeedbackPanelProps {
   messages: string[];

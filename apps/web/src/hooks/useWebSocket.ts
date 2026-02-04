@@ -83,11 +83,12 @@ export function useProjectWebSocket(projectName: string | null) {
 
   // Define the actual connect implementation
   const doConnect = useCallback(() => {
-    if (!projectName) return
-
+    if (!projectName) return; 
+    
     // Build WebSocket URL
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = window.location.host
+    const isProduction = process.env.NODE_ENV === 'production'
+    const protocol = 'wss:'
+    const host = isProduction ? 'ade-api.getmytestdrive.com' : window.location.host
     const wsUrl = `${protocol}//${host}/ws/projects/${encodeURIComponent(projectName)}`
 
     try {

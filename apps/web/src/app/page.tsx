@@ -6,26 +6,33 @@
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Box, AppBar, Toolbar, Typography, IconButton, Stack, CircularProgress, Alert,
+  Box, AppBar, Toolbar, Typography, IconButton, Stack, CircularProgress, Alert, Tooltip,
 } from '@mui/material';
 import {
-  PlayArrow as PlayIcon, Stop as StopIcon,
   Chat as ChatIcon,
   Dashboard as DashIcon, Layers as LayersIcon,
+  AutoFixHigh as MagicIcon,
+  Terminal as TerminalIcon,
 } from '@mui/icons-material';
 import type { ProjectStats } from '@/lib/types';
 import { ProjectSelector } from '@/components/ProjectSelector';
-import { DevServerControl } from '@/components/DevServerControl';
+import { AgentControl } from '@/components/AgentControl';
+import { AgentMissionControl } from '@/components/AgentMissionControl';
+
 import { MetricsBar } from '@/components/MetricsBar';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { DebugPanel } from '@/components/DebugPanel';
 import { FeedbackPanel } from '@/components/FeedbackPanel';
 import { ChatFlyover } from '@/components/ChatFlyover';
+import { SpecCreationChat } from '@/components/SpecCreationChat';
+import { ExpandProjectModal } from '@/components/ExpandProjectModal';
+import { DependencyGraph } from '@/components/DependencyGraph';
 import { useProjects, useFeatures } from '@/hooks/useProjects';
 import { useProjectWebSocket } from '@/hooks/useWebSocket';
 import { useAssistantChat } from '@/hooks/useAssistantChat';
+import { getAgentStatus, startAgent, stopAgent } from '@/lib/api';
 
 const mockFeedback = [
   'ATLAS-VM: Step 4 ASSEMBLE complete. Selected GPT-4o-mini for role "Frontend Specialist".',
@@ -36,18 +43,64 @@ const mockFeedback = [
 
 export default function Home() {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [agentStatus, setAgentStatus] = useState<'stopped' | 'running'>('stopped');
+  const [agentStatus, setAgentStatus] = useState<'stopped' | 'running' | 'paused' | 'loading' | 'crashed'>('stopped');
   const [chatOpen, setChatOpen] = useState(false);
+  const [agentLoading, setAgentLoading] = useState(false);
+  const [currentConcurrency, setCurrentConcurrency] = useState<number | null>(null);
+  const [yoloMode, setYoloMode] = useState(false);
+  
+  const [specCreationOpen, setSpecCreationOpen] = useState(false);
+  const [expandProjectOpen, setExpandProjectOpen] = useState(false);
+  const [dependencyGraphOpen, setDependencyGraphOpen] = useState(false);
+  const [missionControlOpen, setMissionControlOpen] = useState(false);
+
+
+
+  const handleSpecCreation = useCallback(() => {
+    setSpecCreationOpen(true);
+  }, []);
+
+  const handleDependencyGraph = useCallback(() => {
+    setDependencyGraphOpen(prev => !prev);
+  }, []);
+
+  const handleMissionControl = useCallback(() => {
+    setMissionControlOpen(prev => !prev);
+  }, []);
+
+  useEffect(() => {
+    const handleKeyPress = (event: KeyboardEvent) => {
+      if (event.key === 'e' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        setExpandProjectOpen(prev => !prev);
+      }
+      if (event.key === 'm' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+        setMissionControlOpen(prev => !prev);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyPress);
+    return () => window.removeEventListener('keydown', handleKeyPress);
+  }, []);
   
   // Load real projects from API
   const { data: apiData, isLoading: projectsLoading, error: projectsError } = useProjects();
   
   // Load features for selected project
-  const { data: featuresData, isLoading: featuresLoading } = useFeatures(selectedProject);
+  const { data: featuresData } = useFeatures(selectedProject);
   
   // WebSocket for real-time updates
-  const { progress, logs, isConnected } = useProjectWebSocket(selectedProject);
+  const { logs, isConnected, activeAgents, orchestratorStatus } = useProjectWebSocket(selectedProject);
 
+  // Map ActiveAgent to AgentWithMetrics with default metrics
+  const agentsWithMetrics = activeAgents.map(agent => ({
+    ...agent,
+    cpuUsage: Math.floor(Math.random() * 30) + 10, // 10-40% simulated
+    memoryUsage: Math.floor(Math.random() * 200) + 50, // 50-250MB simulated
+    tasksCompleted: Math.floor(Math.random() * 10),
+    currentTask: agent.featureName || 'Idle',
+    uptime: Math.floor(Math.random() * 3600), // 0-1 hour simulated
+  }));
+  
   // Assistant Chat hook
   const { 
     messages: chatMessages, 
@@ -58,6 +111,24 @@ export default function Home() {
     projectName: selectedProject || '',
   });
 
+  // Fetch agent status when project changes
+  useEffect(() => {
+    const fetchAgentStatus = async () => {
+      if (!selectedProject) return;
+      
+      try {
+        const response = await getAgentStatus(selectedProject);
+        setAgentStatus(response.status);
+        setCurrentConcurrency(response.max_concurrency || 3);
+        setYoloMode(response.yolo_mode || false);
+      } catch (error) {
+        console.error('Failed to fetch agent status:', error);
+      }
+    };
+
+    fetchAgentStatus();
+  }, [selectedProject]);
+
   // Start chat when project is selected
   useEffect(() => {
     if (selectedProject) {
@@ -67,11 +138,50 @@ export default function Home() {
     }
     return () => disconnectChat();
   }, [selectedProject, startChat, disconnectChat]);
+
+  // Handle agent start
+  const handleAgentStart = async (concurrency: number, yolo: boolean) => {
+    if (!selectedProject) return;
+    
+    setAgentLoading(true);
+    setAgentStatus('loading');
+    
+    try {
+      await startAgent(selectedProject, {
+        yoloMode: yolo,
+        maxConcurrency: concurrency,
+      });
+      setCurrentConcurrency(concurrency);
+      setYoloMode(yolo);
+    } catch (error) {
+      console.error('Failed to start agent:', error);
+      setAgentStatus('crashed');
+    } finally {
+      setAgentLoading(false);
+    }
+  };
+
+  // Handle agent stop
+  const handleAgentStop = async () => {
+    if (!selectedProject) return;
+    
+    setAgentLoading(true);
+    
+    try {
+      await stopAgent(selectedProject);
+      setAgentStatus('stopped');
+    } catch (error) {
+      console.error('Failed to stop agent:', error);
+    } finally {
+      setAgentLoading(false);
+    }
+  };
   
   // Calculate stats from real data
-  const allFeatures = featuresData 
+  const allFeatures = featuresData
     ? [...featuresData.pending, ...featuresData.in_progress, ...featuresData.done]
     : [];
+
   const stats: ProjectStats = featuresData ? {
     passing: allFeatures.filter(f => f.passes).length,
     in_progress: allFeatures.filter(f => f.in_progress).length,
@@ -106,7 +216,12 @@ export default function Home() {
       {/* Side Slim Rail */}
       <Box sx={{ width: 48, borderRight: '1px solid #1e293b', display: { xs: 'none', md: 'flex' }, flexDirection: 'column', alignItems: 'center', py: 2, gap: 3, bgcolor: '#0f172a' }}>
          <DashIcon sx={{ color: 'primary.main', fontSize: 24 }} />
-         <LayersIcon sx={{ color: '#64748b', fontSize: 20 }} />
+         <IconButton size="small" onClick={handleDependencyGraph}>
+           <LayersIcon sx={{ color: dependencyGraphOpen ? 'primary.main' : '#64748b', fontSize: 20 }} />
+         </IconButton>
+         <IconButton size="small" onClick={handleMissionControl}>
+           <TerminalIcon sx={{ color: missionControlOpen ? 'primary.main' : '#64748b', fontSize: 20 }} />
+         </IconButton>
       </Box>
 
       {/* Main Column */}
@@ -119,21 +234,37 @@ export default function Home() {
             <Box sx={{ flex: 1 }} />
             
             <Stack direction="row" spacing={1} alignItems="center">
-              <DevServerControl projectName={selectedProject} status="stopped" url={null} onStart={()=>{}} onStop={()=>{}} />
-              <Box sx={{ width: 1, height: 16, bgcolor: '#1e293b' }} />
-              <ProjectSelector 
-                projects={apiData?.projects || []} 
-                selectedProject={selectedProject} 
-                onSelectProject={setSelectedProject} 
-                isLoading={projectsLoading} 
-              />
-              <IconButton size="small" color={agentStatus === 'running' ? 'error' : 'primary'} onClick={() => setAgentStatus(agentStatus === 'running' ? 'stopped' : 'running')} sx={{ '&:focus': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}>
-                {agentStatus === 'running' ? <StopIcon fontSize="small" /> : <PlayIcon fontSize="small" />}
-              </IconButton>
-              <IconButton size="small" onClick={() => setChatOpen(!chatOpen)} color={chatOpen ? 'primary' : 'default'} sx={{ '&:focus': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}>
-                <ChatIcon fontSize="small" />
-              </IconButton>
-            </Stack>
+               <Tooltip title="Create Specification">
+                 <IconButton 
+                   size="small" 
+                   onClick={handleSpecCreation} 
+                   disabled={!selectedProject}
+                   color={specCreationOpen ? 'primary' : 'default'}
+                 >
+                   <MagicIcon fontSize="small" />
+                 </IconButton>
+               </Tooltip>
+               <Box sx={{ width: 1, height: 16, bgcolor: '#1e293b' }} />
+               <AgentControl
+                 projectName={selectedProject}
+                 status={agentStatus}
+                 onStart={handleAgentStart}
+                 onStop={handleAgentStop}
+                 isLoading={agentLoading}
+                 currentConcurrency={currentConcurrency}
+                 yoloMode={yoloMode}
+               />
+               <Box sx={{ width: 1, height: 16, bgcolor: '#1e293b' }} />
+               <ProjectSelector
+                 projects={apiData?.projects || []}
+                 selectedProject={selectedProject}
+                 onSelectProject={setSelectedProject}
+                 isLoading={projectsLoading}
+               />
+               <IconButton size="small" onClick={() => setChatOpen(!chatOpen)} color={chatOpen ? 'primary' : 'default'} sx={{ '&:focus': { outline: '2px solid', outlineColor: 'primary.main', outlineOffset: 2 } }}>
+                 <ChatIcon fontSize="small" />
+               </IconButton>
+             </Stack>
           </Toolbar>
         </AppBar>
 
@@ -145,9 +276,17 @@ export default function Home() {
         />
         <FeedbackPanel messages={mockFeedback} />
 
-        {/* Board */}
+        {/* Board & Mission Control */}
         <Box sx={{ flex: 1, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'auto' }}>
-          <Box sx={{ flex: 1, overflow: 'hidden' }}>
+          {missionControlOpen && (
+            <AgentMissionControl 
+              projectName={selectedProject} 
+              activeAgents={activeAgents}
+              orchestratorStatus={orchestratorStatus}
+            />
+          )}
+          
+          <Box sx={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
             <KanbanBoard 
               pending={featuresData?.pending || []} 
               inProgress={featuresData?.in_progress || []} 
@@ -172,6 +311,30 @@ export default function Home() {
         }))} 
         onSendMessage={sendChatMessage} 
       />
+
+      {/* Spec Creation Modal */}
+      <SpecCreationChat
+        open={specCreationOpen}
+        onClose={() => setSpecCreationOpen(false)}
+        projectName={selectedProject || ''}
+      />
+
+      {/* Expand Project Modal */}
+      <ExpandProjectModal
+        open={expandProjectOpen}
+        onClose={() => setExpandProjectOpen(false)}
+        projectName={selectedProject || ''}
+      />
+
+      {/* Dependency Graph Modal */}
+      <DependencyGraph
+        open={dependencyGraphOpen}
+        onClose={() => setDependencyGraphOpen(false)}
+        projectName={selectedProject}
+      />
+
     </Box>
   );
 }
+
+

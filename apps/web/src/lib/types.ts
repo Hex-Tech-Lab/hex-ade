@@ -107,6 +107,8 @@ export interface GraphEdge {
 export interface DependencyGraph {
   nodes: GraphNode[]
   edges: GraphEdge[]
+  features?: GraphNode[]  // For backward compatibility with component
+  active_agents?: ActiveAgent[]
 }
 
 export interface FeatureListResponse {
@@ -361,6 +363,42 @@ export interface SpecChatTextMessage {
   content: string
 }
 
+export interface SpecChatStartMessage {
+  type: 'start'
+  yolo_mode: boolean
+}
+
+export interface SpecChatErrorMessage {
+  type: 'error'
+  content: string
+}
+
+export interface SpecChatPongMessage {
+  type: 'pong'
+}
+
+export interface SpecChatResponseDoneMessage {
+  type: 'response_done'
+}
+
+export interface SpecChatMessageMessage {
+  type: 'message'
+  content: string
+  attachments?: { id: string; filename: string; mimeType: string; base64Data: string }[]
+}
+
+export type SpecChatServerMessage =
+  | SpecChatTextMessage
+  | SpecChatQuestionMessage
+  | SpecChatCompleteMessage
+  | SpecChatFileWrittenMessage
+  | SpecChatSessionCompleteMessage
+  | SpecChatErrorMessage
+  | SpecChatPongMessage
+  | SpecChatResponseDoneMessage
+  | SpecChatStartMessage
+  | SpecChatMessageMessage
+
 export interface SpecChatQuestionMessage {
   type: 'question'
   questions: SpecQuestion[]
@@ -393,16 +431,6 @@ export interface SpecChatPongMessage {
 export interface SpecChatResponseDoneMessage {
   type: 'response_done'
 }
-
-export type SpecChatServerMessage =
-  | SpecChatTextMessage
-  | SpecChatQuestionMessage
-  | SpecChatCompleteMessage
-  | SpecChatFileWrittenMessage
-  | SpecChatSessionCompleteMessage
-  | SpecChatErrorMessage
-  | SpecChatPongMessage
-  | SpecChatResponseDoneMessage
 
 // Image attachment for chat messages
 export interface ImageAttachment {
@@ -506,13 +534,32 @@ export interface ExpandChatCompleteMessage {
   total_added: number
 }
 
+export interface ExpandChatErrorMessage {
+  type: 'error'
+  content: string
+}
+
+export interface ExpandChatPongMessage {
+  type: 'pong'
+}
+
+export interface ExpandChatResponseDoneMessage {
+  type: 'response_done'
+}
+
 export type ExpandChatServerMessage =
   | SpecChatTextMessage        // Reuse text message type
   | ExpandChatFeaturesCreatedMessage
   | ExpandChatCompleteMessage
-  | SpecChatErrorMessage       // Reuse error message type
-  | SpecChatPongMessage        // Reuse pong message type
-  | SpecChatResponseDoneMessage // Reuse response_done type
+  | ExpandChatErrorMessage       // Error message
+  | ExpandChatPongMessage        // Keep-alive pong
+  | ExpandChatResponseDoneMessage // Response complete
+  | ExpandChatExpandMessage     // Expand message
+
+export interface ExpandChatExpandMessage {
+  type: 'expand'
+  prompt: string
+}
 
 // Bulk feature creation
 export interface FeatureBulkCreate {

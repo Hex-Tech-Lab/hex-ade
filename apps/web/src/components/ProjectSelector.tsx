@@ -8,6 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Select,
+  type SelectChangeEvent,
   MenuItem,
   FormControl,
   InputLabel,
@@ -50,14 +51,14 @@ export function ProjectSelector({
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   
   // Load projects from real API
-  const { data: apiData, isLoading: apiLoading } = useProjects();
+  const { data: apiData } = useProjects();
 
   const allProjects = apiData?.projects || projects;
 
   const selectedProjectData = allProjects.find((p) => p.name === selectedProject);
 
-  const handleChange = (event: React.ChangeEvent<{ value: unknown }>) => {
-    const value = event.target.value as string;
+  const handleChange = (event: SelectChangeEvent<string>) => {
+    const value = event.target.value;
     if (value === '__new__') {
       // Handle new project creation
       window.location.href = '/projects/new';
@@ -88,8 +89,7 @@ export function ProjectSelector({
           labelId="project-select-label"
           value={selectedProject || '__none__'}
           label="Project"
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-onChange={(e) => handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
+          onChange={handleChange}
           disabled={isLoading}
           sx={{
             '& .MuiSelect-select': {
