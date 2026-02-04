@@ -32,23 +32,25 @@ from ..utils.response import success_response
 # Lazy imports to avoid circular dependencies
 _create_database = None
 _Feature = None
+_IS_SQLITE = True
 
 logger = logging.getLogger(__name__)
 
 
 def _get_db_classes():
     """Lazy import of database classes."""
-    global _create_database, _Feature
+    global _create_database, _Feature, _IS_SQLITE
     if _create_database is None:
         import sys
         from pathlib import Path
         root = Path(__file__).parent.parent.parent
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from api.database import Feature, create_database
+        from api.database import Feature, create_database, IS_SQLITE
         _create_database = create_database
         _Feature = Feature
-    return _create_database, _Feature
+        _IS_SQLITE = IS_SQLITE
+    return _create_database, _Feature, _IS_SQLITE
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/features", tags=["features"])
@@ -128,12 +130,13 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from ..autocoder_paths import get_features_db_path
-    db_file = get_features_db_path(project_dir)
-    if not db_file.exists():
-        return success_response({"pending": [], "in_progress": [], "done": []}, meta={"count": 0})
+    _, Feature, IS_SQLITE = _get_db_classes()
 
-    _, Feature = _get_db_classes()
+    if IS_SQLITE:
+        from ..autocoder_paths import get_features_db_path
+        db_file = get_features_db_path(project_dir)
+        if not db_file.exists():
+            return success_response({"pending": [], "in_progress": [], "done": []}, meta={"count": 0})
 
     try:
         with get_db_session(project_dir) as session:
@@ -324,12 +327,13 @@ async def get_dependency_graph(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from ..autocoder_paths import get_features_db_path
-    db_file = get_features_db_path(project_dir)
-    if not db_file.exists():
-        return DependencyGraphResponse(nodes=[], edges=[])
+    _, Feature, IS_SQLITE = _get_db_classes()
 
-    _, Feature = _get_db_classes()
+    if IS_SQLITE:
+        from ..autocoder_paths import get_features_db_path
+        db_file = get_features_db_path(project_dir)
+        if not db_file.exists():
+            return DependencyGraphResponse(nodes=[], edges=[])
 
     try:
         with get_db_session(project_dir) as session:
@@ -390,12 +394,13 @@ async def get_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from ..autocoder_paths import get_features_db_path
-    db_file = get_features_db_path(project_dir)
-    if not db_file.exists():
-        raise HTTPException(status_code=404, detail="No features database found")
+    _, Feature, IS_SQLITE = _get_db_classes()
 
-    _, Feature = _get_db_classes()
+    if IS_SQLITE:
+        from ..autocoder_paths import get_features_db_path
+        db_file = get_features_db_path(project_dir)
+        if not db_file.exists():
+            raise HTTPException(status_code=404, detail="No features database found")
 
     try:
         with get_db_session(project_dir) as session:

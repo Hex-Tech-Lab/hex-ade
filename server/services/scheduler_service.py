@@ -90,12 +90,15 @@ class SchedulerService:
 
     async def _load_project_schedules(self, project_name: str, project_dir: Path) -> int:
         """Load schedules for a single project. Returns count of schedules loaded."""
-        from ..api.database import Schedule, create_database
+        from ..api.database import Schedule, create_database, IS_SQLITE
         from ..autocoder_paths import get_features_db_path
 
-        db_path = get_features_db_path(project_dir)
-        if not db_path.exists():
-            return 0
+        # If using SQLite, check if the database file exists.
+        # If using a global DB (like Supabase), we skip this check.
+        if IS_SQLITE:
+            db_path = get_features_db_path(project_dir)
+            if not db_path.exists():
+                return 0
 
         try:
             _, SessionLocal = create_database(project_dir)
@@ -566,12 +569,13 @@ class SchedulerService:
         self, project_name: str, project_dir: Path, now: datetime
     ):
         """Check if a project should be started on server startup."""
-        from ..api.database import Schedule, ScheduleOverride, create_database
+        from ..api.database import Schedule, ScheduleOverride, create_database, IS_SQLITE
         from ..autocoder_paths import get_features_db_path
 
-        db_path = get_features_db_path(project_dir)
-        if not db_path.exists():
-            return
+        if IS_SQLITE:
+            db_path = get_features_db_path(project_dir)
+            if not db_path.exists():
+                return
 
         try:
             _, SessionLocal = create_database(project_dir)

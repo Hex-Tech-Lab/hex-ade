@@ -180,6 +180,25 @@ engine = create_engine(
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
+from contextlib import contextmanager
+
+@contextmanager
+def atomic_transaction(session_maker):
+    """Context manager for atomic database transactions."""
+    session = session_maker()
+    try:
+        yield session
+        session.commit()
+    except Exception:
+        session.rollback()
+        raise
+    finally:
+        session.close()
+
+def dispose_engine(project_dir: Optional[Path] = None):
+    """Dispose of the database engine."""
+    engine.dispose()
+
 def get_db() -> Generator[Session, None, None]:
     """Dependency for FastAPI to get database session."""
     db = SessionLocal()
@@ -188,6 +207,7 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
-def create_database():
+def create_database(project_dir: Optional[Path] = None):
     """Create all tables in the database."""
     Base.metadata.create_all(bind=engine)
+    return engine, SessionLocal

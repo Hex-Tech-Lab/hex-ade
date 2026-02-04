@@ -8,104 +8,66 @@ Uses direct SQLite access for database queries.
 
 import json
 import os
-import sqlite3
 import urllib.request
-from contextlib import closing
 from datetime import datetime, timezone
 from pathlib import Path
 
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
 
-# SQLite connection settings for parallel mode safety
-SQLITE_TIMEOUT = 30  # seconds to wait for locks
-
-
-def _get_connection(db_file: Path) -> sqlite3.Connection:
-    """Get a SQLite connection with proper timeout settings for parallel mode."""
-    return sqlite3.connect(db_file, timeout=SQLITE_TIMEOUT)
-
 
 def has_features(project_dir: Path) -> bool:
     """
     Check if the project has features in the database.
-
-    This is used to determine if the initializer agent needs to run.
-    We check the database directly (not via API) since the API server
-    may not be running yet when this check is performed.
-
-    Returns True if:
-    - features.db exists AND has at least 1 feature, OR
-    - feature_list.json exists (legacy format)
-
-    Returns False if no features exist (initializer needs to run).
     """
-    # Check legacy JSON file first
-    json_file = project_dir / "feature_list.json"
-    if json_file.exists():
-        return True
-
-    # Check SQLite database
+    from .api.database import Feature, create_database, IS_SQLITE
     from .autocoder_paths import get_features_db_path
-    db_file = get_features_db_path(project_dir)
-    if not db_file.exists():
-        return False
+
+    # If using SQLite, check legacy JSON and local DB file
+    if IS_SQLITE:
+        json_file = project_dir / "feature_list.json"
+        if json_file.exists():
+            return True
+
+        db_file = get_features_db_path(project_dir)
+        if not db_file.exists():
+            return False
 
     try:
-        with closing(_get_connection(db_file)) as conn:
-            cursor = conn.cursor()
-            cursor.execute("SELECT COUNT(*) FROM features")
-            count: int = cursor.fetchone()[0]
+        _, SessionLocal = create_database(project_dir)
+        with SessionLocal() as session:
+            from sqlalchemy import func
+            count = session.query(func.count(Feature.id)).scalar()
             return bool(count > 0)
     except Exception:
-        # Database exists but can't be read or has no features table
         return False
 
 
 def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     """
-    Count passing, in_progress, and total tests via direct database access.
-
-    Args:
-        project_dir: Directory containing the project
-
-    Returns:
-        (passing_count, in_progress_count, total_count)
+    Count passing, in_progress, and total tests.
     """
+    from .api.database import Feature, create_database, IS_SQLITE
     from .autocoder_paths import get_features_db_path
-    db_file = get_features_db_path(project_dir)
-    if not db_file.exists():
-        return 0, 0, 0
+
+    if IS_SQLITE:
+        db_file = get_features_db_path(project_dir)
+        if not db_file.exists():
+            return 0, 0, 0
 
     try:
-        with closing(_get_connection(db_file)) as conn:
-            cursor = conn.cursor()
-            # Single aggregate query instead of 3 separate COUNT queries
-            # Handle case where in_progress column doesn't exist yet (legacy DBs)
-            try:
-                cursor.execute("""
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing,
-                        SUM(CASE WHEN in_progress = 1 THEN 1 ELSE 0 END) as in_progress
-                    FROM features
-                """)
-                row = cursor.fetchone()
-                total = row[0] or 0
-                passing = row[1] or 0
-                in_progress = row[2] or 0
-            except sqlite3.OperationalError:
-                # Fallback for databases without in_progress column
-                cursor.execute("""
-                    SELECT
-                        COUNT(*) as total,
-                        SUM(CASE WHEN passes = 1 THEN 1 ELSE 0 END) as passing
-                    FROM features
-                """)
-                row = cursor.fetchone()
-                total = row[0] or 0
-                passing = row[1] or 0
-                in_progress = 0
+        _, SessionLocal = create_database(project_dir)
+        with SessionLocal() as session:
+            from sqlalchemy import func, case
+            result = session.query(
+                func.count(Feature.id).label('total'),
+                func.sum(case((Feature.passes == True, 1), else_=0)).label('passing'),
+                func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress')
+            ).first()
+
+            total = result.total or 0
+            passing = int(result.passing or 0)
+            in_progress = int(result.in_progress or 0)
             return passing, in_progress, total
     except Exception as e:
         print(f"[Database error in count_passing_tests: {e}]")
@@ -115,29 +77,23 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
 def get_all_passing_features(project_dir: Path) -> list[dict]:
     """
     Get all passing features for webhook notifications.
-
-    Args:
-        project_dir: Directory containing the project
-
-    Returns:
-        List of dicts with id, category, name for each passing feature
     """
+    from .api.database import Feature, create_database, IS_SQLITE
     from .autocoder_paths import get_features_db_path
-    db_file = get_features_db_path(project_dir)
-    if not db_file.exists():
-        return []
+
+    if IS_SQLITE:
+        db_file = get_features_db_path(project_dir)
+        if not db_file.exists():
+            return []
 
     try:
-        with closing(_get_connection(db_file)) as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, category, name FROM features WHERE passes = 1 ORDER BY priority ASC"
-            )
-            features = [
-                {"id": row[0], "category": row[1], "name": row[2]}
-                for row in cursor.fetchall()
+        _, SessionLocal = create_database(project_dir)
+        with SessionLocal() as session:
+            features = session.query(Feature).filter(Feature.passes == True).order_by(Feature.priority.asc()).all()
+            return [
+                {"id": f.id, "category": f.category, "name": f.name}
+                for f in features
             ]
-            return features
     except Exception:
         return []
 
