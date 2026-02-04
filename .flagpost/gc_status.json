@@ -1,0 +1,10 @@
+{
+  "agent": "GC",
+  "model": "gemini-2.0-flash",
+  "current_task": null,
+  "status": "idle",
+  "last_updated": null,
+  "completed_tasks": [],
+  "blockers": [],
+  "memory_entries": []
+}

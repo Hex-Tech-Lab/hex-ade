@@ -1,0 +1,28 @@
+{
+  "gc": {
+    "agent": "GC-Gemini-Flash",
+    "task": "idle",
+    "phase": "idle",
+    "step": 0,
+    "last_update": "",
+    "status": "idle",
+    "blocking": false,
+    "waiting_for": null
+  },
+  "oc": {
+    "agent": "OC-Kimi-K25",
+    "task": "idle",
+    "phase": "idle",
+    "step": 0,
+    "last_update": "",
+    "status": "idle",
+    "blocking": false,
+    "waiting_for": null
+  },
+  "shared": {
+    "quality_gate_passed": false,
+    "last_lint": "",
+    "last_typecheck": "",
+    "blockers_count": 0
+  }
+}

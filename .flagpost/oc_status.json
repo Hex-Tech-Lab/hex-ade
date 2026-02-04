@@ -1,0 +1,10 @@
+{
+  "agent": "OC",
+  "model": "kimi-k2.5",
+  "current_task": null,
+  "status": "idle",
+  "last_updated": null,
+  "completed_tasks": [],
+  "blockers": [],
+  "memory_entries": []
+}
