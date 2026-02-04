@@ -5,7 +5,7 @@
 - Domain: ade-api.getmytestdrive.com
 - Points to: hex-ade-api.onrender.com
 - SSL: Auto-provisioned by Render
-- Status: PROVISIONING ⏳ (Awaiting DNS/SSL)
+- Status: ACTIVE ✓
 
 ## Why Separate Subdomain?
 - WebSocket connections can't be proxied through Vercel rewrites
@@ -33,8 +33,8 @@ Added to `server/main.py`:
 - WebSocket: /ws/...
 
 ## Testing
-- [ ] curl https://ade-api.getmytestdrive.com/health
-- [ ] curl https://ade-api.getmytestdrive.com/api/projects
+✓ curl https://ade-api.getmytestdrive.com/health
+✓ curl https://ade-api.getmytestdrive.com/api/projects
 - [ ] WebSocket: wss://ade-api.getmytestdrive.com/ws/projects/{name}
 
 ## Future: Multi-Environment
