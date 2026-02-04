@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from utils.response import error_response
+from .utils.response import error_response
 from .routers import (
     agent_router,
     assistant_chat_router,
