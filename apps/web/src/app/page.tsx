@@ -6,32 +6,26 @@
 
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
-  Box, AppBar, Toolbar, Typography, IconButton, Stack,
+  Box, AppBar, Toolbar, Typography, IconButton, Stack, CircularProgress, Alert,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon, Stop as StopIcon,
   Chat as ChatIcon,
   Dashboard as DashIcon, Layers as LayersIcon,
 } from '@mui/icons-material';
-import type { Feature, ProjectStats } from '../lib/types';
-import { ProjectSelector } from '../components/ProjectSelector';
-import { DevServerControl } from '../components/DevServerControl';
-import { MetricsBar } from '../components/MetricsBar';
-import { KanbanBoard } from '../components/KanbanBoard';
-import { DebugPanel } from '../components/DebugPanel';
-import { FeedbackPanel } from '../components/FeedbackPanel';
-import { ChatFlyover } from '../components/ChatFlyover';
-
-const mockStats: ProjectStats = { passing: 23, in_progress: 1, total: 190, percentage: 12.1 };
-
-const mockFeatures: Feature[] = Array.from({ length: 40 }, (_, i) => ({
-  id: i, priority: i, category: i % 2 === 0 ? 'FUNCTIONAL' : 'UI',
-  name: `Feature ${i}: ${['Auth', 'DB', 'Layout', 'API', 'Docs'][i % 5]} Refinement`,
-  description: 'High-density engineering task for 10x workflow.',
-  steps: [], passes: i > 35, in_progress: i === 23,
-}));
+import type { ProjectStats } from '@/lib/types';
+import { ProjectSelector } from '@/components/ProjectSelector';
+import { DevServerControl } from '@/components/DevServerControl';
+import { MetricsBar } from '@/components/MetricsBar';
+import { KanbanBoard } from '@/components/KanbanBoard';
+import { DebugPanel } from '@/components/DebugPanel';
+import { FeedbackPanel } from '@/components/FeedbackPanel';
+import { ChatFlyover } from '@/components/ChatFlyover';
+import { useProjects, useFeatures } from '@/hooks/useProjects';
+import { useProjectWebSocket } from '@/hooks/useWebSocket';
+import { useAssistantChat } from '@/hooks/useAssistantChat';
 
 const mockFeedback = [
   'ATLAS-VM: Step 4 ASSEMBLE complete. Selected GPT-4o-mini for role "Frontend Specialist".',
@@ -41,9 +35,71 @@ const mockFeedback = [
 ];
 
 export default function Home() {
-  const [selectedProject, setSelectedProject] = useState<string | null>('hex-ade');
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [agentStatus, setAgentStatus] = useState<'stopped' | 'running'>('stopped');
   const [chatOpen, setChatOpen] = useState(false);
+  
+  // Load real projects from API
+  const { data: apiData, isLoading: projectsLoading, error: projectsError } = useProjects();
+  
+  // Load features for selected project
+  const { data: featuresData, isLoading: featuresLoading } = useFeatures(selectedProject);
+  
+  // WebSocket for real-time updates
+  const { progress, logs, isConnected } = useProjectWebSocket(selectedProject);
+
+  // Assistant Chat hook
+  const { 
+    messages: chatMessages, 
+    sendMessage: sendChatMessage, 
+    start: startChat,
+    disconnect: disconnectChat 
+  } = useAssistantChat({
+    projectName: selectedProject || '',
+  });
+
+  // Start chat when project is selected
+  useEffect(() => {
+    if (selectedProject) {
+      startChat();
+    } else {
+      disconnectChat();
+    }
+    return () => disconnectChat();
+  }, [selectedProject, startChat, disconnectChat]);
+  
+  // Calculate stats from real data
+  const allFeatures = featuresData 
+    ? [...featuresData.pending, ...featuresData.in_progress, ...featuresData.done]
+    : [];
+  const stats: ProjectStats = featuresData ? {
+    passing: allFeatures.filter(f => f.passes).length,
+    in_progress: allFeatures.filter(f => f.in_progress).length,
+    total: allFeatures.length,
+    percentage: allFeatures.length > 0 
+      ? (allFeatures.filter(f => f.passes).length / allFeatures.length) * 100 
+      : 0
+  } : { passing: 0, in_progress: 0, total: 0, percentage: 0 };
+  
+  // Show loading state
+  if (projectsLoading) {
+    return (
+      <Box sx={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', bgcolor: '#020617' }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+  
+  // Show error state
+  if (projectsError) {
+    return (
+      <Box sx={{ p: 3, bgcolor: '#020617', height: '100vh' }}>
+        <Alert severity="error">
+          Failed to load projects: {projectsError.message}
+        </Alert>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ display: 'flex', height: '100vh', width: '100vw', bgcolor: '#020617', color: '#f8fafc', overflow: 'hidden' }}>
@@ -65,7 +121,12 @@ export default function Home() {
             <Stack direction="row" spacing={1} alignItems="center">
               <DevServerControl projectName={selectedProject} status="stopped" url={null} onStart={()=>{}} onStop={()=>{}} />
               <Box sx={{ width: 1, height: 16, bgcolor: '#1e293b' }} />
-              <ProjectSelector projects={[]} selectedProject={selectedProject} onSelectProject={setSelectedProject} isLoading={false} />
+              <ProjectSelector 
+                projects={apiData?.projects || []} 
+                selectedProject={selectedProject} 
+                onSelectProject={setSelectedProject} 
+                isLoading={projectsLoading} 
+              />
               <IconButton size="small" color={agentStatus === 'running' ? 'error' : 'primary'} onClick={() => setAgentStatus(agentStatus === 'running' ? 'stopped' : 'running')}>
                 {agentStatus === 'running' ? <StopIcon fontSize="small" /> : <PlayIcon fontSize="small" />}
               </IconButton>
@@ -77,26 +138,40 @@ export default function Home() {
         </AppBar>
 
         {/* Dense Info Stack */}
-        <MetricsBar stats={mockStats} statusMessage="Active: [Spark] Refactoring Apps/Web/Page.tsx" budgetUsed={0.42} />
+        <MetricsBar 
+          stats={stats} 
+          statusMessage={isConnected ? `Connected: ${selectedProject || 'No project'}` : 'Disconnected'} 
+          budgetUsed={0.42} 
+        />
         <FeedbackPanel messages={mockFeedback} />
 
         {/* Board */}
         <Box sx={{ flex: 1, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'hidden' }}>
           <Box sx={{ flex: 1, overflow: 'hidden' }}>
             <KanbanBoard 
-              pending={mockFeatures.filter(f => !f.passes && !f.in_progress)} 
-              inProgress={mockFeatures.filter(f => f.in_progress)} 
-              done={mockFeatures.filter(f => f.passes)} 
+              pending={featuresData?.pending || []} 
+              inProgress={featuresData?.in_progress || []} 
+              done={featuresData?.done || []} 
               onFeatureClick={()=>{}} 
-              activeAgents={[{ agentIndex: 0, agentName: 'Spark', featureId: 23, featureIds: [23], agentType: 'coding', featureName: 'Feature 23', state: 'working', thought: 'Processing', timestamp: new Date().toISOString(), logs: [] }]}
+              activeAgents={[]}
             />
           </Box>
-          <DebugPanel logs={[]} />
+          <DebugPanel logs={logs.map(l => ({ ...l, type: 'output' as const }))} />
         </Box>
       </Box>
 
       {/* Flyover (Glassmorphic) */}
-      <ChatFlyover open={chatOpen} onClose={() => setChatOpen(false)} messages={[]} onSendMessage={()=>{}} />
+      <ChatFlyover 
+        open={chatOpen} 
+        onClose={() => setChatOpen(false)} 
+        messages={chatMessages.map(m => ({
+          id: m.id,
+          role: m.role as 'user' | 'assistant',
+          content: m.content,
+          timestamp: m.timestamp.toLocaleTimeString()
+        }))} 
+        onSendMessage={sendChatMessage} 
+      />
     </Box>
   );
 }

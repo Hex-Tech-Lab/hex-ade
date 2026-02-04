@@ -20,14 +20,17 @@ if sys.platform == "win32":
 
 from dotenv import load_dotenv
 
-# Load environment variables from .env file if present
-load_dotenv()
+# Load environment variables from server/.env
+env_path = Path(__file__).parent / ".env"
+load_dotenv(dotenv_path=env_path)
 
 from fastapi import FastAPI, HTTPException, Request, WebSocket
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .utils.response import error_response
 from .routers import (
     agent_router,
     assistant_chat_router,
@@ -42,7 +45,9 @@ from .routers import (
     terminal_router,
 )
 from .schemas import SetupStatus
-from .services.assistant_chat_session import cleanup_all_sessions as cleanup_assistant_sessions
+from .services.assistant_chat_session import (
+    cleanup_all_sessions as cleanup_assistant_sessions,
+)
 from .services.chat_constants import ROOT_DIR
 from .services.dev_server_manager import (
     cleanup_all_devservers,
@@ -53,6 +58,9 @@ from .services.process_manager import cleanup_all_managers, cleanup_orphaned_loc
 from .services.scheduler_service import cleanup_scheduler, get_scheduler
 from .services.terminal_manager import cleanup_all_terminals
 from .websocket import project_websocket
+
+# Module logger
+logger = logging.getLogger(__name__)
 
 # Paths
 UI_DIST_DIR = ROOT_DIR / "ui" / "dist"
@@ -89,173 +97,77 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Module logger
-logger = logging.getLogger(__name__)
-
-# Check if remote access is enabled via environment variable
-# Set by start_ui.py when --host is not 127.0.0.1
-ALLOW_REMOTE = os.environ.get("AUTOCODER_ALLOW_REMOTE", "").lower() in ("1", "true", "yes")
-
-if ALLOW_REMOTE:
-    logger.warning(
-        "ALLOW_REMOTE is enabled. Terminal WebSocket is exposed without sandboxing. "
-        "Only use this in trusted network environments."
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"status": "error", "error": {"code": str(exc.status_code), "message": exc.detail}},
     )
 
-# CORS - allow all origins when remote access is enabled, otherwise localhost only
-if ALLOW_REMOTE:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=["*"],  # Allow all origins for remote access
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-else:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "http://localhost:5173",      # Vite dev server
-            "http://127.0.0.1:5173",
-            "http://localhost:8888",      # Production
-            "http://127.0.0.1:8888",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content={"status": "error", "error": {"code": "422", "message": str(exc.errors()), "details": exc.errors()}},
     )
 
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={"status": "error", "error": {"code": "500", "message": "Internal Server Error", "details": str(exc)}},
+    )
 
-# ============================================================================
-# Security Middleware
-# ============================================================================
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, specify your domains
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-if not ALLOW_REMOTE:
-    @app.middleware("http")
-    async def require_localhost(request: Request, call_next):
-        """Only allow requests from localhost (disabled when AUTOCODER_ALLOW_REMOTE=1)."""
-        client_host = request.client.host if request.client else None
-
-        # Allow localhost connections
-        if client_host not in ("127.0.0.1", "::1", "localhost", None):
-            raise HTTPException(status_code=403, detail="Localhost access only")
-
-        return await call_next(request)
-
-
-# ============================================================================
-# Include Routers
-# ============================================================================
-
+# Include routers - Prefixes are defined within the routers themselves
 app.include_router(projects_router)
 app.include_router(features_router)
 app.include_router(agent_router)
-app.include_router(schedules_router)
+app.include_router(filesystem_router)
+app.include_router(terminal_router)
 app.include_router(devserver_router)
 app.include_router(spec_creation_router)
 app.include_router(expand_project_router)
-app.include_router(filesystem_router)
 app.include_router(assistant_chat_router)
 app.include_router(settings_router)
-app.include_router(terminal_router)
+app.include_router(schedules_router)
 
-
-# ============================================================================
-# WebSocket Endpoint
-# ============================================================================
-
-@app.websocket("/ws/projects/{project_name}")
-async def websocket_endpoint(websocket: WebSocket, project_name: str):
-    """WebSocket endpoint for real-time project updates."""
-    await project_websocket(websocket, project_name)
-
-
-# ============================================================================
-# Setup & Health Endpoints
-# ============================================================================
-
-@app.get("/api/health")
+# Health check
+@app.get("/health")
 async def health_check():
-    """Health check endpoint."""
     return {"status": "healthy"}
 
-
-@app.get("/api/setup/status", response_model=SetupStatus)
-async def setup_status():
-    """Check system setup status."""
-    # Check for Claude CLI
-    claude_cli = shutil.which("claude") is not None
-
-    # Check for CLI configuration directory
-    # Note: CLI no longer stores credentials in ~/.claude/.credentials.json
-    # The existence of ~/.claude indicates the CLI has been configured
-    claude_dir = Path.home() / ".claude"
-    has_claude_config = claude_dir.exists() and claude_dir.is_dir()
-
-    # If GLM mode is configured via .env, we have alternative credentials
-    glm_configured = bool(os.getenv("ANTHROPIC_BASE_URL") and os.getenv("ANTHROPIC_AUTH_TOKEN"))
-    credentials = has_claude_config or glm_configured
-
-    # Check for Node.js and npm
-    node = shutil.which("node") is not None
-    npm = shutil.which("npm") is not None
-
-    return SetupStatus(
-        claude_cli=claude_cli,
-        credentials=credentials,
-        node=node,
-        npm=npm,
-    )
-
-
-# ============================================================================
-# Static File Serving (Production)
-# ============================================================================
-
-# Serve React build files if they exist
+# Static files
+# Order matters: check for UI files, then catch-all for Next.js routing
 if UI_DIST_DIR.exists():
-    # Mount static assets
-    app.mount("/assets", StaticFiles(directory=UI_DIST_DIR / "assets"), name="assets")
-
-    @app.get("/")
-    async def serve_index():
-        """Serve the React app index.html."""
-        return FileResponse(UI_DIST_DIR / "index.html")
+    app.mount("/static", StaticFiles(directory=UI_DIST_DIR / "static"), name="static")
 
     @app.get("/{path:path}")
-    async def serve_spa(path: str):
-        """
-        Serve static files or fall back to index.html for SPA routing.
-        """
-        # Check if the path is an API route (shouldn't hit this due to router ordering)
-        if path.startswith("api/") or path.startswith("ws/"):
-            raise HTTPException(status_code=404)
-
-        # Try to serve the file directly
-        file_path = (UI_DIST_DIR / path).resolve()
-
-        # Ensure resolved path is within UI_DIST_DIR (prevent path traversal)
-        try:
-            file_path.relative_to(UI_DIST_DIR.resolve())
-        except ValueError:
-            raise HTTPException(status_code=404)
-
+    async def serve_ui(path: str):
+        # Try to serve specific file
+        file_path = UI_DIST_DIR / path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
+        
+        # Fallback to index.html for SPA routing
+        index_path = UI_DIST_DIR / "index.html"
+        if index_path.exists():
+            return FileResponse(index_path)
+        
+        raise HTTPException(status_code=404, detail="Not found")
 
-        # Fall back to index.html for SPA routing
-        return FileResponse(UI_DIST_DIR / "index.html")
-
-
-# ============================================================================
-# Main Entry Point
-# ============================================================================
-
+# Main execution
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "server.main:app",
-        host="127.0.0.1",  # Localhost only for security
-        port=8888,
-        reload=True,
-    )
+    
+    port = int(os.getenv("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)

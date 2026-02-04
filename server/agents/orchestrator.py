@@ -247,8 +247,8 @@ class ParallelOrchestrator:
             # Multiple testing agents can test the same feature - that's fine
             feature = (
                 session.query(Feature)
-                .filter(Feature.passes == True)
-                .filter(Feature.in_progress == False)  # Don't test while coding
+                .filter(Feature.passes)
+                .filter(not Feature.in_progress)  # Don't test while coding
                 .order_by(func.random())
                 .first()
             )
@@ -279,8 +279,8 @@ class ParallelOrchestrator:
             session.expire_all()
             passing = (
                 session.query(Feature)
-                .filter(Feature.passes == True)
-                .filter(Feature.in_progress == False)  # Don't test while coding
+                .filter(Feature.passes)
+                .filter(not Feature.in_progress)  # Don't test while coding
                 .all()
             )
 
@@ -627,7 +627,7 @@ class ParallelOrchestrator:
             session = self.get_session()
             try:
                 session.expire_all()
-                count: int = session.query(Feature).filter(Feature.passes == True).count()
+                count: int = session.query(Feature).filter(Feature.passes).count()
                 return count
             finally:
                 session.close()

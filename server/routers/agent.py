@@ -10,11 +10,12 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException
 
-from ..schemas import AgentActionResponse, AgentStartRequest, AgentStatus
+from ..schemas import AgentActionResponse, AgentStartRequest, AgentStatus, StandardResponse
 from ..services.chat_constants import ROOT_DIR
 from ..services.process_manager import get_manager
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
+from ..utils.response import success_response
 
 
 def _get_settings_defaults() -> tuple[bool, str, int, bool, int]:
@@ -23,8 +24,7 @@ def _get_settings_defaults() -> tuple[bool, str, int, bool, int]:
     Returns:
         Tuple of (yolo_mode, model, testing_agent_ratio, playwright_headless, batch_size)
     """
-    import sys
-    root = Path(__file__).parent.parent.parent
+    Path(__file__).parent.parent.parent
     # if str(root) not in sys.path:
     #     sys.path.insert(0, str(root))
 
@@ -67,7 +67,7 @@ def get_project_manager(project_name: str):
     return get_manager(project_name, project_dir, ROOT_DIR)
 
 
-@router.get("/status", response_model=AgentStatus)
+@router.get("/status", response_model=StandardResponse)
 async def get_agent_status(project_name: str):
     """Get the current status of the agent for a project."""
     manager = get_project_manager(project_name)
@@ -75,7 +75,7 @@ async def get_agent_status(project_name: str):
     # Run healthcheck to detect crashed processes
     await manager.healthcheck()
 
-    return AgentStatus(
+    status = AgentStatus(
         status=manager.status,
         pid=manager.pid,
         started_at=manager.started_at.isoformat() if manager.started_at else None,
@@ -85,9 +85,10 @@ async def get_agent_status(project_name: str):
         max_concurrency=manager.max_concurrency,
         testing_agent_ratio=manager.testing_agent_ratio,
     )
+    return success_response(status)
 
 
-@router.post("/start", response_model=AgentActionResponse)
+@router.post("/start", response_model=StandardResponse)
 async def start_agent(
     project_name: str,
     request: AgentStartRequest = AgentStartRequest(),
@@ -121,14 +122,14 @@ async def start_agent(
         if project_dir:
             get_scheduler().notify_manual_start(project_name, project_dir)
 
-    return AgentActionResponse(
-        success=success,
-        status=manager.status,
-        message=message,
-    )
+    return success_response({
+        "success": success,
+        "status": manager.status,
+        "message": message,
+    })
 
 
-@router.post("/stop", response_model=AgentActionResponse)
+@router.post("/stop", response_model=StandardResponse)
 async def stop_agent(project_name: str):
     """Stop the agent for a project."""
     manager = get_project_manager(project_name)
@@ -142,36 +143,36 @@ async def stop_agent(project_name: str):
         if project_dir:
             get_scheduler().notify_manual_stop(project_name, project_dir)
 
-    return AgentActionResponse(
-        success=success,
-        status=manager.status,
-        message=message,
-    )
+    return success_response({
+        "success": success,
+        "status": manager.status,
+        "message": message,
+    })
 
 
-@router.post("/pause", response_model=AgentActionResponse)
+@router.post("/pause", response_model=StandardResponse)
 async def pause_agent(project_name: str):
     """Pause the agent for a project."""
     manager = get_project_manager(project_name)
 
     success, message = await manager.pause()
 
-    return AgentActionResponse(
-        success=success,
-        status=manager.status,
-        message=message,
-    )
+    return success_response({
+        "success": success,
+        "status": manager.status,
+        "message": message,
+    })
 
 
-@router.post("/resume", response_model=AgentActionResponse)
+@router.post("/resume", response_model=StandardResponse)
 async def resume_agent(project_name: str):
     """Resume a paused agent."""
     manager = get_project_manager(project_name)
 
     success, message = await manager.resume()
 
-    return AgentActionResponse(
-        success=success,
-        status=manager.status,
-        message=message,
-    )
+    return success_response({
+        "success": success,
+        "status": manager.status,
+        "message": message,
+    })

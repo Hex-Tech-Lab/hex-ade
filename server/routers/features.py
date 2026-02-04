@@ -23,9 +23,11 @@ from ..schemas import (
     FeatureListResponse,
     FeatureResponse,
     FeatureUpdate,
+    StandardResponse,
 )
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
+from ..utils.response import success_response
 
 # Lazy imports to avoid circular dependencies
 _create_database = None
@@ -107,7 +109,7 @@ def feature_to_response(f, passing_ids: set[int] | None = None) -> FeatureRespon
     )
 
 
-@router.get("", response_model=FeatureListResponse)
+@router.get("", response_model=StandardResponse)
 async def list_features(project_name: str):
     """
     List all features for a project organized by status.
@@ -126,10 +128,10 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_features_db_path
+    from ..autocoder_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
-        return FeatureListResponse(pending=[], in_progress=[], done=[])
+        return success_response({"pending": [], "in_progress": [], "done": []}, meta={"count": 0})
 
     _, Feature = _get_db_classes()
 
@@ -153,11 +155,11 @@ async def list_features(project_name: str):
                 else:
                     pending.append(feature_response)
 
-            return FeatureListResponse(
-                pending=pending,
-                in_progress=in_progress,
-                done=done,
-            )
+            return success_response({
+                "pending": pending,
+                "in_progress": in_progress,
+                "done": done,
+            }, meta={"count": len(all_features)})
     except HTTPException:
         raise
     except Exception:
@@ -165,7 +167,7 @@ async def list_features(project_name: str):
         raise HTTPException(status_code=500, detail="Database error occurred")
 
 
-@router.post("", response_model=FeatureResponse)
+@router.post("", response_model=StandardResponse)
 async def create_feature(project_name: str, feature: FeatureCreate):
     """Create a new feature/test case manually."""
     project_name = validate_project_name(project_name)
@@ -204,7 +206,7 @@ async def create_feature(project_name: str, feature: FeatureCreate):
             session.commit()
             session.refresh(db_feature)
 
-            return feature_to_response(db_feature)
+            return success_response(feature_to_response(db_feature))
     except HTTPException:
         raise
     except Exception:
@@ -217,7 +219,7 @@ async def create_feature(project_name: str, feature: FeatureCreate):
 # ============================================================================
 
 
-@router.post("/bulk", response_model=FeatureBulkCreateResponse)
+@router.post("/bulk", response_model=StandardResponse)
 async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
     """
     Create multiple features at once.
@@ -295,10 +297,10 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
             ).order_by(Feature.priority).all():
                 created_features.append(feature_to_response(db_feature))
 
-            return FeatureBulkCreateResponse(
-                created=len(created_features),
-                features=created_features
-            )
+            return success_response({
+                "created": len(created_features),
+                "features": created_features
+            })
     except HTTPException:
         raise
     except Exception:
@@ -306,7 +308,7 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
         raise HTTPException(status_code=500, detail="Failed to bulk create features")
 
 
-@router.get("/graph", response_model=DependencyGraphResponse)
+@router.get("/graph", response_model=StandardResponse)
 async def get_dependency_graph(project_name: str):
     """Return dependency graph data for visualization.
 
@@ -322,7 +324,7 @@ async def get_dependency_graph(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_features_db_path
+    from ..autocoder_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         return DependencyGraphResponse(nodes=[], edges=[])
@@ -363,7 +365,7 @@ async def get_dependency_graph(project_name: str):
                 for dep_id in deps:
                     edges.append(DependencyGraphEdge(source=dep_id, target=f.id))
 
-            return DependencyGraphResponse(nodes=nodes, edges=edges)
+            return success_response({"nodes": nodes, "edges": edges})
     except HTTPException:
         raise
     except Exception:
@@ -376,7 +378,7 @@ async def get_dependency_graph(project_name: str):
 # ============================================================================
 
 
-@router.get("/{feature_id}", response_model=FeatureResponse)
+@router.get("/{feature_id}", response_model=StandardResponse)
 async def get_feature(project_name: str, feature_id: int):
     """Get details of a specific feature."""
     project_name = validate_project_name(project_name)
@@ -388,7 +390,7 @@ async def get_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    from autocoder_paths import get_features_db_path
+    from ..autocoder_paths import get_features_db_path
     db_file = get_features_db_path(project_dir)
     if not db_file.exists():
         raise HTTPException(status_code=404, detail="No features database found")
@@ -402,7 +404,7 @@ async def get_feature(project_name: str, feature_id: int):
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            return feature_to_response(feature)
+            return success_response(feature_to_response(feature))
     except HTTPException:
         raise
     except Exception:
@@ -410,7 +412,7 @@ async def get_feature(project_name: str, feature_id: int):
         raise HTTPException(status_code=500, detail="Database error occurred")
 
 
-@router.patch("/{feature_id}", response_model=FeatureResponse)
+@router.patch("/{feature_id}", response_model=StandardResponse)
 async def update_feature(project_name: str, feature_id: int, update: FeatureUpdate):
     """
     Update a feature's details.
@@ -465,7 +467,7 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
             all_features = session.query(Feature).all()
             passing_ids = {f.id for f in all_features if f.passes}
 
-            return feature_to_response(feature, passing_ids)
+            return success_response(feature_to_response(feature, passing_ids))
     except HTTPException:
         raise
     except Exception:
@@ -473,7 +475,7 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
         raise HTTPException(status_code=500, detail="Failed to update feature")
 
 
-@router.delete("/{feature_id}")
+@router.delete("/{feature_id}", response_model=StandardResponse)
 async def delete_feature(project_name: str, feature_id: int):
     """Delete a feature and clean up references in other features' dependencies.
 
@@ -516,7 +518,7 @@ async def delete_feature(project_name: str, feature_id: int):
             if affected_features:
                 message += f". Removed from dependencies of features: {affected_features}"
 
-            return {"success": True, "message": message, "affected_features": affected_features}
+            return success_response({"success": True, "message": message, "affected_features": affected_features})
     except HTTPException:
         raise
     except Exception:
@@ -524,7 +526,7 @@ async def delete_feature(project_name: str, feature_id: int):
         raise HTTPException(status_code=500, detail="Failed to delete feature")
 
 
-@router.patch("/{feature_id}/skip")
+@router.patch("/{feature_id}/skip", response_model=StandardResponse)
 async def skip_feature(project_name: str, feature_id: int):
     """
     Mark a feature as skipped by moving it to the end of the priority queue.
@@ -556,7 +558,7 @@ async def skip_feature(project_name: str, feature_id: int):
 
             session.commit()
 
-            return {"success": True, "message": f"Feature {feature_id} moved to end of queue"}
+            return success_response({"success": True, "message": f"Feature {feature_id} moved to end of queue"})
     except HTTPException:
         raise
     except Exception:

@@ -12,7 +12,7 @@ import type {
   AgentLogEntry,
   OrchestratorStatus,
   OrchestratorEvent,
-} from '../lib/types'
+} from '@/lib/types'
 
 // Activity item for the feed
 interface ActivityItem {
@@ -78,8 +78,11 @@ export function useProjectWebSocket(projectName: string | null) {
   const wsRef = useRef<WebSocket | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const reconnectAttempts = useRef(0)
+  // Ref to store the connect implementation for reconnection use
+  const doConnectRef = useRef<(() => void) | undefined>(undefined)
 
-  const connect = useCallback(() => {
+  // Define the actual connect implementation
+  const doConnect = useCallback(() => {
     if (!projectName) return
 
     // Build WebSocket URL
@@ -344,7 +347,7 @@ export function useProjectWebSocket(projectName: string | null) {
         reconnectAttempts.current++
 
         reconnectTimeoutRef.current = window.setTimeout(() => {
-          connect()
+          doConnectRef.current?.()
         }, delay)
       }
 
@@ -355,6 +358,16 @@ export function useProjectWebSocket(projectName: string | null) {
       // Failed to connect, will retry via onclose
     }
   }, [projectName])
+
+  // Sync doConnect to ref
+  useEffect(() => {
+    doConnectRef.current = doConnect
+  }, [doConnect])
+
+  // Public connect function
+  const connect = useCallback(() => {
+    doConnect()
+  }, [doConnect])
 
   // Send ping to keep connection alive
   const sendPing = useCallback(() => {
@@ -380,6 +393,7 @@ export function useProjectWebSocket(projectName: string | null) {
   useEffect(() => {
     // Reset state when project changes to clear stale data
     // Use 'loading' for agentStatus to show loading indicator until WebSocket provides actual status
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setState({
       progress: { passing: 0, in_progress: 0, total: 0, percentage: 0 },
       agentStatus: 'loading',

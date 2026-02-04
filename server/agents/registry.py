@@ -3,7 +3,8 @@ Project Registry Module
 =======================
 
 Cross-platform project registry for storing project name to path mappings.
-Uses SQLite database stored at ~/.autocoder/registry.db.
+Uses SQLite database stored at ~/.autocoder/registry.db by default,
+or the global DATABASE_URL (Supabase) if available.
 """
 
 import logging
@@ -11,13 +12,15 @@ import os
 import re
 import threading
 import time
+import uuid
 from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from sqlalchemy import Column, DateTime, Integer, String, create_engine, text
+from sqlalchemy import Boolean, Column, DateTime, Integer, String, create_engine, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
+from sqlalchemy.dialects.postgresql import UUID as pgUUID
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -28,32 +31,25 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 # Available models with display names
-# To add a new model: add an entry here with {"id": "model-id", "name": "Display Name"}
 AVAILABLE_MODELS = [
     {"id": "claude-opus-4-5-20251101", "name": "Claude Opus 4.5"},
     {"id": "claude-sonnet-4-5-20250929", "name": "Claude Sonnet 4.5"},
 ]
 
-# List of valid model IDs (derived from AVAILABLE_MODELS)
 VALID_MODELS = [m["id"] for m in AVAILABLE_MODELS]
 
-# Default model and settings
-# Respect ANTHROPIC_DEFAULT_OPUS_MODEL env var for Foundry/custom deployments
-# Guard against empty/whitespace values by trimming and falling back when blank
 _env_default_model = os.getenv("ANTHROPIC_DEFAULT_OPUS_MODEL")
 if _env_default_model is not None:
     _env_default_model = _env_default_model.strip()
 DEFAULT_MODEL = _env_default_model or "claude-opus-4-5-20251101"
 
-# Ensure env-provided DEFAULT_MODEL is in VALID_MODELS for validation consistency
-# (idempotent: only adds if missing, doesn't alter AVAILABLE_MODELS semantics)
 if DEFAULT_MODEL and DEFAULT_MODEL not in VALID_MODELS:
     VALID_MODELS.append(DEFAULT_MODEL)
 DEFAULT_YOLO_MODE = False
 
 # SQLite connection settings
-SQLITE_TIMEOUT = 30  # seconds to wait for database lock
-SQLITE_MAX_RETRIES = 3  # number of retry attempts on busy database
+SQLITE_TIMEOUT = 30
+SQLITE_MAX_RETRIES = 3
 
 
 # =============================================================================
@@ -88,15 +84,23 @@ class Base(DeclarativeBase):
     """SQLAlchemy 2.0 style declarative base."""
     pass
 
+# Helper to handle UUID across Postgres/SQLite
+_db_url_for_type_check = os.getenv("DATABASE_URL")
+_IS_SQLITE = not _db_url_for_type_check or _db_url_for_type_check.startswith("sqlite")
+UUID_TYPE = pgUUID(as_uuid=True) if not _IS_SQLITE else String(36)
 
 class Project(Base):
     """SQLAlchemy model for registered projects."""
     __tablename__ = "projects"
 
-    name = Column(String(50), primary_key=True, index=True)
-    path = Column(String, nullable=False)  # POSIX format for cross-platform
-    created_at = Column(DateTime, nullable=False)
+    id = Column(UUID_TYPE, primary_key=True, default=lambda: uuid.uuid4() if not _IS_SQLITE else str(uuid.uuid4()))
+    name = Column(String(255), unique=True, index=True, nullable=False)
+    path = Column(String(1024), nullable=False)
+    has_spec = Column(Boolean, default=False)
     default_concurrency = Column(Integer, nullable=False, default=3)
+    created_at = Column(DateTime, nullable=False, default=datetime.now)
+    updated_at = Column(DateTime, nullable=False, default=datetime.now, onupdate=datetime.now)
+    created_by = Column(UUID_TYPE, nullable=True)
 
 
 class Settings(Base):
@@ -112,82 +116,78 @@ class Settings(Base):
 # Database Connection
 # =============================================================================
 
-# Module-level singleton for database engine with thread-safe initialization
 _engine = None
 _SessionLocal = None
 _engine_lock = threading.Lock()
 
 
 def get_config_dir() -> Path:
-    """
-    Get the config directory: ~/.autocoder/
-
-    Returns:
-        Path to ~/.autocoder/ (created if it doesn't exist)
-    """
     config_dir = Path.home() / ".autocoder"
     config_dir.mkdir(parents=True, exist_ok=True)
     return config_dir
 
 
 def get_registry_path() -> Path:
-    """Get the path to the registry database."""
     return get_config_dir() / "registry.db"
 
 
 def _get_engine():
-    """
-    Get or create the database engine (thread-safe singleton pattern).
-
-    Returns:
-        Tuple of (engine, SessionLocal)
-    """
     global _engine, _SessionLocal
 
     # Double-checked locking for thread safety
     if _engine is None:
         with _engine_lock:
             if _engine is None:
-                db_path = get_registry_path()
-                db_url = f"sqlite:///{db_path.as_posix()}"
-                _engine = create_engine(
-                    db_url,
-                    connect_args={
-                        "check_same_thread": False,
-                        "timeout": SQLITE_TIMEOUT,
-                    }
-                )
+                # Check for global DATABASE_URL (e.g. Supabase)
+                db_url = os.getenv("DATABASE_URL")
+                if db_url:
+                    # Fix for postgres:// vs postgresql://
+                    if db_url.startswith("postgres://"):
+                        db_url = db_url.replace("postgres://", "postgresql://", 1)
+                    # Add sslmode if not sqlite
+                    if not db_url.startswith("sqlite") and "sslmode" not in db_url:
+                        if "?" in db_url:
+                            db_url += "&sslmode=require"
+                        else:
+                            db_url += "?sslmode=require"
+                    
+                    _engine = create_engine(db_url, pool_pre_ping=True)
+                    logger.info("Initialized registry using DATABASE_URL")
+                else:
+                    db_path = get_registry_path()
+                    db_url = f"sqlite:///{db_path.as_posix()}"
+                    _engine = create_engine(
+                        db_url,
+                        connect_args={
+                            "check_same_thread": False,
+                            "timeout": SQLITE_TIMEOUT,
+                        }
+                    )
+                    logger.debug("Initialized local registry database at: %s", db_path)
+
                 Base.metadata.create_all(bind=_engine)
                 _migrate_add_default_concurrency(_engine)
                 _SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=_engine)
-                logger.debug("Initialized registry database at: %s", db_path)
 
     return _engine, _SessionLocal
 
 
 def _migrate_add_default_concurrency(engine) -> None:
-    """Add default_concurrency column if missing (for existing databases)."""
-    with engine.connect() as conn:
-        result = conn.execute(text("PRAGMA table_info(projects)"))
-        columns = [row[1] for row in result.fetchall()]
-        if "default_concurrency" not in columns:
-            conn.execute(text(
-                "ALTER TABLE projects ADD COLUMN default_concurrency INTEGER DEFAULT 3"
-            ))
-            conn.commit()
-            logger.info("Migrated projects table: added default_concurrency column")
+    # Only for SQLite
+    if engine.url.drivername == "sqlite":
+        with engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(projects)"))
+            columns = [row[1] for row in result.fetchall()]
+            if "default_concurrency" not in columns:
+                conn.execute(text(
+                    "ALTER TABLE projects ADD COLUMN default_concurrency INTEGER DEFAULT 3"
+                ))
+                conn.commit()
+                logger.info("Migrated projects table: added default_concurrency column")
 
 
 @contextmanager
 def _get_session():
-    """
-    Context manager for database sessions with automatic commit/rollback.
-
-    Includes retry logic for SQLite busy database errors.
-
-    Yields:
-        SQLAlchemy session
-    """
     _, SessionLocal = _get_engine()
     session = SessionLocal()
     try:
@@ -201,19 +201,6 @@ def _get_session():
 
 
 def _with_retry(func, *args, **kwargs):
-    """
-    Execute a database operation with retry logic for busy database.
-
-    Args:
-        func: Function to execute
-        *args, **kwargs: Arguments to pass to the function
-
-    Returns:
-        Result of the function
-
-    Raises:
-        Last exception if all retries fail
-    """
     last_error = None
     for attempt in range(SQLITE_MAX_RETRIES):
         try:
@@ -223,11 +210,7 @@ def _with_retry(func, *args, **kwargs):
             error_str = str(e).lower()
             if "database is locked" in error_str or "sqlite_busy" in error_str:
                 if attempt < SQLITE_MAX_RETRIES - 1:
-                    wait_time = (2 ** attempt) * 0.1  # Exponential backoff: 0.1s, 0.2s, 0.4s
-                    logger.warning(
-                        "Database busy, retrying in %.1fs (attempt %d/%d)",
-                        wait_time, attempt + 1, SQLITE_MAX_RETRIES
-                    )
+                    wait_time = (2 ** attempt) * 0.1
                     time.sleep(wait_time)
                     continue
             raise
@@ -239,31 +222,14 @@ def _with_retry(func, *args, **kwargs):
 # =============================================================================
 
 def register_project(name: str, path: Path) -> None:
-    """
-    Register a new project in the registry.
-
-    Args:
-        name: The project name (unique identifier).
-        path: The absolute path to the project directory.
-
-    Raises:
-        ValueError: If project name is invalid or path is not absolute.
-        RegistryError: If a project with that name already exists.
-    """
-    # Validate name
     if not re.match(r'^[a-zA-Z0-9_-]{1,50}$', name):
-        raise ValueError(
-            "Invalid project name. Use only letters, numbers, hyphens, "
-            "and underscores (1-50 chars)."
-        )
+        raise ValueError("Invalid project name.")
 
-    # Ensure path is absolute
     path = Path(path).resolve()
 
     with _get_session() as session:
         existing = session.query(Project).filter(Project.name == name).first()
         if existing:
-            logger.warning("Attempted to register duplicate project: %s", name)
             raise RegistryError(f"Project '{name}' already exists in registry")
 
         project = Project(
@@ -277,19 +243,9 @@ def register_project(name: str, path: Path) -> None:
 
 
 def unregister_project(name: str) -> bool:
-    """
-    Remove a project from the registry.
-
-    Args:
-        name: The project name to remove.
-
-    Returns:
-        True if removed, False if project wasn't found.
-    """
     with _get_session() as session:
         project = session.query(Project).filter(Project.name == name).first()
         if not project:
-            logger.debug("Attempted to unregister non-existent project: %s", name)
             return False
 
         session.delete(project)
@@ -299,15 +255,6 @@ def unregister_project(name: str) -> bool:
 
 
 def get_project_path(name: str) -> Path | None:
-    """
-    Look up a project's path by name.
-
-    Args:
-        name: The project name.
-
-    Returns:
-        The project Path, or None if not found.
-    """
     _, SessionLocal = _get_engine()
     session = SessionLocal()
     try:
@@ -320,12 +267,6 @@ def get_project_path(name: str) -> Path | None:
 
 
 def list_registered_projects() -> dict[str, dict[str, Any]]:
-    """
-    Get all registered projects.
-
-    Returns:
-        Dictionary mapping project names to their info dictionaries.
-    """
     _, SessionLocal = _get_engine()
     session = SessionLocal()
     try:
@@ -343,15 +284,6 @@ def list_registered_projects() -> dict[str, dict[str, Any]]:
 
 
 def get_project_info(name: str) -> dict[str, Any] | None:
-    """
-    Get full info about a project.
-
-    Args:
-        name: The project name.
-
-    Returns:
-        Project info dictionary, or None if not found.
-    """
     _, SessionLocal = _get_engine()
     session = SessionLocal()
     try:
@@ -368,16 +300,6 @@ def get_project_info(name: str) -> dict[str, Any] | None:
 
 
 def update_project_path(name: str, new_path: Path) -> bool:
-    """
-    Update a project's path (for relocating projects).
-
-    Args:
-        name: The project name.
-        new_path: The new absolute path.
-
-    Returns:
-        True if updated, False if project wasn't found.
-    """
     new_path = Path(new_path).resolve()
 
     with _get_session() as session:
@@ -391,15 +313,6 @@ def update_project_path(name: str, new_path: Path) -> bool:
 
 
 def get_project_concurrency(name: str) -> int:
-    """
-    Get project's default concurrency (1-5).
-
-    Args:
-        name: The project name.
-
-    Returns:
-        The default concurrency value (defaults to 3 if not set or project not found).
-    """
     _, SessionLocal = _get_engine()
     session = SessionLocal()
     try:
@@ -412,19 +325,6 @@ def get_project_concurrency(name: str) -> int:
 
 
 def set_project_concurrency(name: str, concurrency: int) -> bool:
-    """
-    Set project's default concurrency (1-5).
-
-    Args:
-        name: The project name.
-        concurrency: The concurrency value (1-5).
-
-    Returns:
-        True if updated, False if project wasn't found.
-
-    Raises:
-        ValueError: If concurrency is not between 1 and 5.
-    """
     if concurrency < 1 or concurrency > 5:
         raise ValueError("concurrency must be between 1 and 5")
 
@@ -435,7 +335,6 @@ def set_project_concurrency(name: str, concurrency: int) -> bool:
 
         project.default_concurrency = concurrency
 
-    logger.info("Set project '%s' default_concurrency to %d", name, concurrency)
     return True
 
 
@@ -444,45 +343,20 @@ def set_project_concurrency(name: str, concurrency: int) -> bool:
 # =============================================================================
 
 def validate_project_path(path: Path) -> tuple[bool, str]:
-    """
-    Validate that a project path is accessible and writable.
-
-    Args:
-        path: The path to validate.
-
-    Returns:
-        Tuple of (is_valid, error_message).
-    """
     path = Path(path).resolve()
-
-    # Check if path exists
     if not path.exists():
         return False, f"Path does not exist: {path}"
-
-    # Check if it's a directory
     if not path.is_dir():
         return False, f"Path is not a directory: {path}"
-
-    # Check read permissions
     if not os.access(path, os.R_OK):
         return False, f"No read permission: {path}"
-
-    # Check write permissions
     if not os.access(path, os.W_OK):
         return False, f"No write permission: {path}"
-
     return True, ""
 
 
 def cleanup_stale_projects() -> list[str]:
-    """
-    Remove projects from registry whose paths no longer exist.
-
-    Returns:
-        List of removed project names.
-    """
     removed = []
-
     with _get_session() as session:
         projects = session.query(Project).all()
         for project in projects:
@@ -490,20 +364,10 @@ def cleanup_stale_projects() -> list[str]:
             if not path.exists():
                 session.delete(project)
                 removed.append(project.name)
-
-    if removed:
-        logger.info("Cleaned up stale projects: %s", removed)
-
     return removed
 
 
 def list_valid_projects() -> list[dict[str, Any]]:
-    """
-    List all projects that have valid, accessible paths.
-
-    Returns:
-        List of project info dicts with additional 'name' field.
-    """
     _, SessionLocal = _get_engine()
     session = SessionLocal()
     try:
@@ -528,16 +392,6 @@ def list_valid_projects() -> list[dict[str, Any]]:
 # =============================================================================
 
 def get_setting(key: str, default: str | None = None) -> str | None:
-    """
-    Get a setting value by key.
-
-    Args:
-        key: The setting key.
-        default: Default value if setting doesn't exist or on DB error.
-
-    Returns:
-        The setting value, or default if not found or on error.
-    """
     try:
         _, SessionLocal = _get_engine()
         session = SessionLocal()
@@ -552,13 +406,6 @@ def get_setting(key: str, default: str | None = None) -> str | None:
 
 
 def set_setting(key: str, value: str) -> None:
-    """
-    Set a setting value (creates or updates).
-
-    Args:
-        key: The setting key.
-        value: The setting value.
-    """
     with _get_session() as session:
         setting = session.query(Settings).filter(Settings.key == key).first()
         if setting:
@@ -572,16 +419,8 @@ def set_setting(key: str, value: str) -> None:
             )
             session.add(setting)
 
-    logger.debug("Set setting '%s' = '%s'", key, value)
-
 
 def get_all_settings() -> dict[str, str]:
-    """
-    Get all settings as a dictionary.
-
-    Returns:
-        Dictionary mapping setting keys to values.
-    """
     try:
         _, SessionLocal = _get_engine()
         session = SessionLocal()

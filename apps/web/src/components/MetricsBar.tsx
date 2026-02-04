@@ -5,12 +5,11 @@
  */
 
 import React from 'react';
-import { Box, Typography, LinearProgress, CircularProgress, useTheme, Stack, Divider } from '@mui/material';
+import { Box, Typography, LinearProgress, CircularProgress, Stack, Divider } from '@mui/material';
 import {
   AccountBalanceWallet as WalletIcon,
-  CheckCircle as CheckCircleIcon,
 } from '@mui/icons-material';
-import type { ProjectStats } from '../lib/types';
+import type { ProjectStats } from '@/lib/types';
 
 interface MetricsBarProps {
   stats: ProjectStats;
@@ -25,7 +24,6 @@ export function MetricsBar({
   budgetUsed = 0,
   budgetTotal = 10,
 }: MetricsBarProps) {
-  const theme = useTheme();
   const budgetPercentage = (budgetUsed / budgetTotal) * 100;
 
   return (

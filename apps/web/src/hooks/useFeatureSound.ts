@@ -4,7 +4,7 @@
  */
 
 import { useEffect, useRef } from 'react'
-import type { FeatureListResponse } from '../lib/types'
+import type { FeatureListResponse } from '@/lib/types'
 
 // Sound frequencies for different transitions (in Hz)
 const SOUNDS = {

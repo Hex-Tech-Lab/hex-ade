@@ -29,13 +29,6 @@ from ..services.project_config import (
 from ..utils.project_helpers import get_project_path as _get_project_path
 from ..utils.validation import validate_project_name
 
-# Add root to path for security module import
-_root = Path(__file__).parent.parent.parent
-if str(_root) not in sys.path:
-    sys.path.insert(0, str(_root))
-
-from security import extract_commands, get_effective_commands, is_command_allowed
-
 logger = logging.getLogger(__name__)
 
 

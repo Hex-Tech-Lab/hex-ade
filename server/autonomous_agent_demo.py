@@ -222,7 +222,7 @@ def main() -> None:
             return
 
     # Migrate project layout to .autocoder/ if needed (idempotent, safe)
-    from autocoder_paths import migrate_project_layout
+    from .autocoder_paths import migrate_project_layout
     migrated = migrate_project_layout(project_dir)
     if migrated:
         print(f"Migrated project files to .autocoder/: {', '.join(migrated)}", flush=True)

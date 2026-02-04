@@ -19,7 +19,7 @@ import {
   Autorenew as ProgressIcon,
   CheckCircle as CompleteIcon,
 } from '@mui/icons-material';
-import type { Feature, ActiveAgent } from '../lib/types';
+import type { Feature, ActiveAgent } from '@/lib/types';
 import { FeatureCard } from './FeatureCard';
 
 interface KanbanColumn {

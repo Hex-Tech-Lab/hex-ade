@@ -6,15 +6,38 @@ Request/Response models for the API endpoints.
 """
 
 import base64
-import sys
 from datetime import datetime
-from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 # Import model constants from registry (single source of truth)
 from .agents.registry import DEFAULT_MODEL, VALID_MODELS
+
+# ============================================================================
+# Standard Wrapper Schemas
+# ============================================================================
+
+class ResponseMeta(BaseModel):
+    timestamp: str
+    version: str = "1.0"
+    count: int | None = None
+    total: int | None = None
+
+class StandardResponse(BaseModel):
+    status: Literal["success", "error"] = "success"
+    data: Any
+    meta: ResponseMeta
+
+class ErrorDetails(BaseModel):
+    code: str
+    message: str
+    details: dict = {}
+
+class ErrorResponse(BaseModel):
+    status: Literal["error"] = "error"
+    error: ErrorDetails
+    meta: dict = {"timestamp": ""}
 
 # ============================================================================
 # Project Schemas

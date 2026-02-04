@@ -9,7 +9,6 @@ project root and is re-exported here for convenience so that existing
 imports (``from .chat_constants import API_ENV_VARS``) continue to work.
 """
 
-import sys
 from pathlib import Path
 from typing import AsyncGenerator
 

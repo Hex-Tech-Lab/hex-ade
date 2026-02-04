@@ -5,7 +5,7 @@
  * Redesigned from original DropdownMenu to use MUI Select.
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Select,
   MenuItem,
@@ -28,7 +28,8 @@ import {
   Add as AddIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import type { ProjectSummary } from '../lib/types';
+import type { ProjectSummary } from '@/lib/types';
+import { useProjects } from '@/hooks/useProjects';
 
 interface ProjectSelectorProps {
   projects: ProjectSummary[];
@@ -43,17 +44,23 @@ export function ProjectSelector({
   selectedProject,
   onSelectProject,
   isLoading,
+  onSpecCreatingChange,
 }: ProjectSelectorProps) {
   const theme = useTheme();
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  
+  // Load projects from real API
+  const { data: apiData, isLoading: apiLoading } = useProjects();
 
-  const selectedProjectData = projects.find((p) => p.name === selectedProject);
+  const allProjects = apiData?.projects || projects;
+
+  const selectedProjectData = allProjects.find((p) => p.name === selectedProject);
 
   const handleChange = (event: React.ChangeEvent<{ value: unknown }>) => {
     const value = event.target.value as string;
     if (value === '__new__') {
       // Handle new project creation
-      console.log('New project creation triggered');
+      window.location.href = '/projects/new';
     } else {
       onSelectProject(value === '__none__' ? null : value);
     }
@@ -81,7 +88,8 @@ export function ProjectSelector({
           labelId="project-select-label"
           value={selectedProject || '__none__'}
           label="Project"
-          onChange={(e) => handleChange(e as any)}
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+onChange={(e) => handleChange(e as unknown as React.ChangeEvent<HTMLInputElement>)}
           disabled={isLoading}
           sx={{
             '& .MuiSelect-select': {
@@ -97,7 +105,7 @@ export function ProjectSelector({
             </MenuItem>
           )}
 
-          {projects.map((project) => (
+          {allProjects.map((project) => (
             <MenuItem
               key={project.name}
               value={project.name}

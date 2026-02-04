@@ -150,8 +150,8 @@ def feature_get_stats() -> str:
         # Single aggregate query instead of 3 separate COUNT queries
         result = session.query(
             func.count(Feature.id).label('total'),
-            func.sum(case((Feature.passes == True, 1), else_=0)).label('passing'),
-            func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress')
+            func.sum(case((Feature.passes, 1), else_=0)).label('passing'),
+            func.sum(case((Feature.in_progress, 1), else_=0)).label('in_progress')
         ).first()
 
         total = result.total or 0

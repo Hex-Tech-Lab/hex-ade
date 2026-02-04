@@ -8,12 +8,10 @@ Settings are stored in the registry database and shared across all projects.
 
 import mimetypes
 import os
-import sys
 
 from fastapi import APIRouter
 
 from ..schemas import ModelInfo, ModelsResponse, SettingsResponse, SettingsUpdate
-from ..services.chat_constants import ROOT_DIR
 
 # Mimetype fix for Windows - must run before StaticFiles is mounted
 mimetypes.add_type("text/javascript", ".js", True)

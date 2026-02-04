@@ -3,7 +3,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ImageAttachment, ExpandChatServerMessage } from '../lib/types'
+import type { ChatMessage, ImageAttachment, ExpandChatServerMessage } from '@/lib/types'
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 

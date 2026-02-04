@@ -5,7 +5,7 @@
 
 import { useEffect, useRef } from 'react'
 import confetti from 'canvas-confetti'
-import type { FeatureListResponse } from '../lib/types'
+import type { FeatureListResponse } from '@/lib/types'
 
 /**
  * Play a triumphant fanfare using Web Audio API

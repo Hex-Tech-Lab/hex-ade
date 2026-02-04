@@ -2,6 +2,20 @@
  * TypeScript types for the Autonomous Coding UI
  */
 
+// API Wrapper types
+export interface ResponseMeta {
+  timestamp: string
+  version: string
+  count?: number
+  total?: number
+}
+
+export interface StandardResponse<T> {
+  status: 'success' | 'error'
+  data: T
+  meta: ResponseMeta
+}
+
 // Project types
 export interface ProjectStats {
   passing: number

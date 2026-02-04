@@ -22,7 +22,9 @@ from ..schemas import (
     ProjectSettingsUpdate,
     ProjectStats,
     ProjectSummary,
+    StandardResponse,
 )
+from ..utils.response import success_response
 
 # Lazy imports to avoid circular dependencies
 # These are initialized by _init_imports() before first use.
@@ -42,8 +44,7 @@ def _init_imports():
     if _imports_initialized:
         return
 
-    import sys
-    root = Path(__file__).parent.parent.parent
+    Path(__file__).parent.parent.parent
     # if str(root) not in sys.path:
     #     sys.path.insert(0, str(root))
 
@@ -60,8 +61,7 @@ def _init_imports():
 
 def _get_registry_functions():
     """Get registry functions with lazy import."""
-    import sys
-    root = Path(__file__).parent.parent.parent
+    Path(__file__).parent.parent.parent
     # if str(root) not in sys.path:
     #     sys.path.insert(0, str(root))
 
@@ -112,7 +112,7 @@ def get_project_stats(project_dir: Path) -> ProjectStats:
     )
 
 
-@router.get("", response_model=list[ProjectSummary])
+@router.get("", response_model=StandardResponse)
 async def list_projects():
     """List all registered projects."""
     _init_imports()
@@ -142,10 +142,10 @@ async def list_projects():
             default_concurrency=info.get("default_concurrency", 3),
         ))
 
-    return result
+    return success_response({"projects": result}, meta={"count": len(result)})
 
 
-@router.post("", response_model=ProjectSummary)
+@router.post("", response_model=StandardResponse)
 async def create_project(project: ProjectCreate):
     """Create a new project at the specified path."""
     _init_imports()
@@ -217,16 +217,17 @@ async def create_project(project: ProjectCreate):
             detail=f"Failed to register project: {e}"
         )
 
-    return ProjectSummary(
+    summary = ProjectSummary(
         name=name,
         path=project_path.as_posix(),
         has_spec=False,  # Just created, no spec yet
         stats=ProjectStats(passing=0, total=0, percentage=0.0),
         default_concurrency=3,
     )
+    return success_response(summary)
 
 
-@router.get("/{name}", response_model=ProjectDetail)
+@router.get("/{name}", response_model=StandardResponse)
 async def get_project(name: str):
     """Get detailed information about a project."""
     _init_imports()
@@ -247,7 +248,7 @@ async def get_project(name: str):
     stats = get_project_stats(project_dir)
     prompts_dir = _get_project_prompts_dir(project_dir)
 
-    return ProjectDetail(
+    detail = ProjectDetail(
         name=name,
         path=project_dir.as_posix(),
         has_spec=has_spec,
@@ -255,9 +256,10 @@ async def get_project(name: str):
         prompts_dir=str(prompts_dir),
         default_concurrency=get_project_concurrency(name),
     )
+    return success_response(detail)
 
 
-@router.delete("/{name}")
+@router.delete("/{name}", response_model=StandardResponse)
 async def delete_project(name: str, delete_files: bool = False):
     """
     Delete a project from the registry.
@@ -276,7 +278,7 @@ async def delete_project(name: str, delete_files: bool = False):
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
 
     # Check if agent is running
-    from autocoder_paths import has_agent_running
+    from ..autocoder_paths import has_agent_running
     if has_agent_running(project_dir):
         raise HTTPException(
             status_code=409,
@@ -293,10 +295,11 @@ async def delete_project(name: str, delete_files: bool = False):
     # Unregister from registry
     unregister_project(name)
 
-    return {
-        "success": True,
+    return success_response({
+        "deleted": True,
+        "name": name,
         "message": f"Project '{name}' deleted" + (" (files removed)" if delete_files else " (files preserved)")
-    }
+    })
 
 
 @router.get("/{name}/prompts", response_model=ProjectPrompts)
@@ -364,7 +367,7 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
     return {"success": True, "message": "Prompts updated"}
 
 
-@router.get("/{name}/stats", response_model=ProjectStats)
+@router.get("/{name}/stats", response_model=StandardResponse)
 async def get_project_stats_endpoint(name: str):
     """Get current progress statistics for a project."""
     _init_imports()
@@ -379,7 +382,7 @@ async def get_project_stats_endpoint(name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    return get_project_stats(project_dir)
+    return success_response(get_project_stats(project_dir))
 
 
 @router.post("/{name}/reset")
@@ -407,7 +410,7 @@ async def reset_project(name: str, full_reset: bool = False):
         raise HTTPException(status_code=404, detail="Project directory not found")
 
     # Check if agent is running
-    from autocoder_paths import has_agent_running
+    from ..autocoder_paths import has_agent_running
     if has_agent_running(project_dir):
         raise HTTPException(
             status_code=409,
@@ -424,7 +427,7 @@ async def reset_project(name: str, full_reset: bool = False):
 
     deleted_files: list[str] = []
 
-    from autocoder_paths import (
+    from ..autocoder_paths import (
         get_assistant_db_path,
         get_claude_assistant_settings_path,
         get_claude_settings_path,
@@ -466,7 +469,7 @@ async def reset_project(name: str, full_reset: bool = False):
 
     # Full reset: also delete prompts directory
     if full_reset:
-        from autocoder_paths import get_prompts_dir
+        from ..autocoder_paths import get_prompts_dir
         # Delete prompts from both possible locations
         for prompts_dir in [get_prompts_dir(project_dir), project_dir / "prompts"]:
             if prompts_dir.exists():
@@ -485,7 +488,7 @@ async def reset_project(name: str, full_reset: bool = False):
     }
 
 
-@router.patch("/{name}/settings", response_model=ProjectDetail)
+@router.patch("/{name}/settings", response_model=StandardResponse)
 async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
     """Update project-level settings (concurrency, etc.)."""
     _init_imports()
@@ -514,7 +517,7 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
     stats = get_project_stats(project_dir)
     prompts_dir = _get_project_prompts_dir(project_dir)
 
-    return ProjectDetail(
+    detail = ProjectDetail(
         name=name,
         path=project_dir.as_posix(),
         has_spec=has_spec,
@@ -522,3 +525,4 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
         prompts_dir=str(prompts_dir),
         default_concurrency=get_project_concurrency(name),
     )
+    return success_response(detail)

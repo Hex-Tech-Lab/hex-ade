@@ -11,7 +11,7 @@ import {
   Circle as PendingIcon,
   Block as BlockIcon,
 } from '@mui/icons-material';
-import type { Feature, ActiveAgent } from '../lib/types';
+import type { Feature, ActiveAgent } from '@/lib/types';
 
 interface FeatureCardProps {
   feature: Feature;

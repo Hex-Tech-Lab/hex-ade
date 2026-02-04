@@ -44,6 +44,8 @@ export function useAssistantChat({
   const pingIntervalRef = useRef<number | null>(null);
   const reconnectTimeoutRef = useRef<number | null>(null);
   const checkAndSendTimeoutRef = useRef<number | null>(null);
+  // Ref to store the connect implementation for reconnection use
+  const doConnectRef = useRef<(() => void) | undefined>(undefined);
 
   // Clean up on unmount
   useEffect(() => {
@@ -64,7 +66,8 @@ export function useAssistantChat({
     };
   }, []);
 
-  const connect = useCallback(() => {
+  // Define the actual connect implementation
+  const doConnect = useCallback(() => {
     // Prevent multiple connection attempts
     if (
       wsRef.current?.readyState === WebSocket.OPEN ||
@@ -108,7 +111,9 @@ export function useAssistantChat({
           1000 * Math.pow(2, reconnectAttempts.current),
           10000,
         );
-        reconnectTimeoutRef.current = window.setTimeout(connect, delay);
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          doConnectRef.current?.();
+        }, delay);
       }
     };
 
@@ -257,6 +262,16 @@ export function useAssistantChat({
       }
     };
   }, [projectName, onError]);
+
+  // Sync doConnect to ref
+  useEffect(() => {
+    doConnectRef.current = doConnect;
+  }, [doConnect]);
+
+  // Public connect function
+  const connect = useCallback(() => {
+    doConnect();
+  }, [doConnect]);
 
   const start = useCallback(
     (existingConversationId?: number | null) => {

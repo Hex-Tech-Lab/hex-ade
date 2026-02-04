@@ -106,11 +106,11 @@ class ExpandChatSession:
             from ..autocoder_paths import get_prompts_dir
             spec_path = get_prompts_dir(self.project_dir) / "app_spec.txt"
             if not spec_path.exists():
-            yield {
-                "type": "error",
-                "content": "Project has no app_spec.txt. Please create it first using spec creation."
-            }
-            return
+                yield {
+                    "type": "error",
+                    "content": "Project has no app_spec.txt. Please create it first using spec creation."
+                }
+                return
 
         try:
             skill_content = skill_path.read_text(encoding="utf-8")

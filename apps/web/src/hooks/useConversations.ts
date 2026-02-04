@@ -3,7 +3,7 @@
  */
 
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import * as api from '../lib/api'
+import * as api from '@/lib/api'
 
 /**
  * List all conversations for a project

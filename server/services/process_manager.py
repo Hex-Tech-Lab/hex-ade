@@ -571,8 +571,7 @@ def cleanup_orphaned_locks() -> int:
     Returns:
         Number of orphaned lock files cleaned up
     """
-    import sys
-    root = Path(__file__).parent.parent.parent
+    Path(__file__).parent.parent.parent
     # if str(root) not in sys.path:
     #     sys.path.insert(0, str(root))
 

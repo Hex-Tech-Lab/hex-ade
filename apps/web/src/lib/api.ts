@@ -55,14 +55,25 @@ async function fetchJSON<T>(url: string, options?: RequestInit): Promise<T> {
     return undefined as T
   }
 
-  return response.json()
+  const json = await response.json()
+
+  // Unwrap StandardResponse if it has that structure
+  if (json && typeof json === 'object' && 'status' in json && 'data' in json) {
+    if (json.status === 'success') {
+      return json.data as T
+    } else if (json.status === 'error') {
+      throw new Error(json.error?.message || 'API Error')
+    }
+  }
+
+  return json as T
 }
 
 // ============================================================================
 // Projects API
 // ============================================================================
 
-export async function listProjects(): Promise<ProjectSummary[]> {
+export async function listProjects(): Promise<{ projects: ProjectSummary[] }> {
   return fetchJSON('/projects')
 }
 

@@ -3,8 +3,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react'
-import type { ChatMessage, ImageAttachment, SpecChatServerMessage, SpecQuestion } from '../lib/types'
-import { getSpecStatus } from '../lib/api'
+import type { ChatMessage, ImageAttachment, SpecChatServerMessage, SpecQuestion } from '@/lib/types'
+import { getSpecStatus } from '@/lib/api'
 
 type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'error'
 
@@ -50,6 +50,8 @@ export function useSpecChat({
   const pingIntervalRef = useRef<number | null>(null)
   const reconnectTimeoutRef = useRef<number | null>(null)
   const isCompleteRef = useRef(false)
+  // Ref to store the connect implementation for reconnection use
+  const doConnectRef = useRef<(() => void) | undefined>(undefined)
 
   // Keep isCompleteRef in sync with isComplete state
   useEffect(() => {
@@ -131,7 +133,8 @@ export function useSpecChat({
     return () => clearTimeout(startDelay)
   }, [projectName, isComplete])
 
-  const connect = useCallback(() => {
+  // Define the actual connect implementation
+  const doConnect = useCallback(() => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       return
     }
@@ -168,7 +171,9 @@ export function useSpecChat({
       if (reconnectAttempts.current < maxReconnectAttempts && !isCompleteRef.current) {
         reconnectAttempts.current++
         const delay = Math.min(1000 * Math.pow(2, reconnectAttempts.current), 10000)
-        reconnectTimeoutRef.current = window.setTimeout(connect, delay)
+        reconnectTimeoutRef.current = window.setTimeout(() => {
+          doConnectRef.current?.()
+        }, delay)
       }
     }
 
@@ -347,6 +352,16 @@ export function useSpecChat({
       }
     }
   }, [projectName, onError])
+
+  // Sync doConnect to ref
+  useEffect(() => {
+    doConnectRef.current = doConnect
+  }, [doConnect])
+
+  // Public connect function
+  const connect = useCallback(() => {
+    doConnect()
+  }, [doConnect])
 
   const start = useCallback(() => {
     connect()

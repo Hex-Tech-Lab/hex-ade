@@ -11,7 +11,6 @@ import {
   Paper,
   Typography,
   IconButton,
-  Button,
   Collapse,
   Chip,
   Stack,
@@ -23,16 +22,12 @@ import {
   Clear as ClearIcon,
   Download as DownloadIcon,
   BugReport as BugIcon,
+  ContentCopy as ContentCopyIcon,
 } from '@mui/icons-material';
 
-interface LogEntry {
-  timestamp: string;
-  level: 'info' | 'debug' | 'warn' | 'error';
-  message: string;
-}
-
+import type { AgentLogEntry } from '@/lib/types';
 interface DebugPanelProps {
-  logs: LogEntry[];
+  logs: AgentLogEntry[];
   onClear?: () => void;
   onExport?: () => void;
   maxHeight?: number;
@@ -42,11 +37,12 @@ const getLevelColor = (level: string) => {
   switch (level) {
     case 'error':
       return '#d32f2f';
-    case 'warn':
+    case 'error':
       return '#f57c00';
-    case 'debug':
+    case 'input':
       return '#1976d2';
-    case 'info':
+    case 'state_change':
+    case 'output':
     default:
       return '#757575';
   }
@@ -104,8 +100,20 @@ export function DebugPanel({
           />
         </Box>
 
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-          {expanded && (
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <IconButton
+                    size="small"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      // Placeholder for copy to clipboard
+                      navigator.clipboard.writeText(logs.map(log => `${log.timestamp} [${log.type}] ${log.line}`).join('\n'));
+                    }}
+                    sx={{ p: 0.5 }}
+                    title="Copy All Logs"
+                  >
+                    <ContentCopyIcon fontSize="small" />
+                  </IconButton>
+                  {expanded && (
             <>
               <IconButton
                 size="small"
@@ -187,26 +195,26 @@ export function DebugPanel({
                   >
                     {log.timestamp}
                   </Typography>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: getLevelColor(log.level),
-                      fontWeight: 600,
-                      textTransform: 'uppercase',
-                      minWidth: 50,
-                    }}
-                  >
-                    {log.level}
-                  </Typography>
-                  <Typography
-                    variant="caption"
-                    sx={{
-                      color: 'text.primary',
-                      wordBreak: 'break-word',
-                    }}
-                  >
-                    {log.message}
-                  </Typography>
+                      <Typography
+                        variant="caption"
+                        sx={{
+                          color: getLevelColor(log.type),
+                          fontWeight: 600,
+                          textTransform: 'uppercase',
+                          minWidth: 50,
+                        }}
+                      >
+                        {log.type}
+                      </Typography>
+                   <Typography
+                     variant="caption"
+                     sx={{
+                       color: 'text.primary',
+                       wordBreak: 'break-word',
+                     }}
+                   >
+                     {log.line}
+                   </Typography>
                 </Box>
               ))}
             </Stack>

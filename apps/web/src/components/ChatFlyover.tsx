@@ -11,16 +11,13 @@ import {
   Typography,
   IconButton,
   TextField,
-  Paper,
   Stack,
-  Avatar,
   Divider,
 } from '@mui/material';
 import {
   Close as CloseIcon,
   Send as SendIcon,
   SmartToy as RobotIcon,
-  Person as UserIcon,
 } from '@mui/icons-material';
 
 interface Message {

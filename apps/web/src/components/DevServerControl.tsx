@@ -20,7 +20,7 @@ import {
   OpenInNew as OpenInNewIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import type { DevServerStatus } from '../lib/types';
+import type { DevServerStatus } from '@/lib/types';
 
 export type { DevServerStatus };
 

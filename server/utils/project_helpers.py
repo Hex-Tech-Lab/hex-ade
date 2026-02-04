@@ -6,7 +6,6 @@ Shared project path lookup used across all server routers and websocket handlers
 Consolidates the previously duplicated _get_project_path() function.
 """
 
-import sys
 from pathlib import Path
 
 # Ensure the project root is on sys.path so `registry` can be imported.

@@ -8,7 +8,6 @@ Manages time-based start/stop of agents with crash recovery and manual override 
 
 import asyncio
 import logging
-import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Optional

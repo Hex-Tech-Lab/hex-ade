@@ -2,11 +2,12 @@
  * Projects List Page
  * 
  * Displays all projects in a list/grid format.
+ * Wired to real API - uses useProjects and useDeleteProject hooks.
  */
 
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Box,
   Typography,
@@ -14,41 +15,65 @@ import {
   Button,
   Stack,
   Chip,
-  IconButton,
   Grid,
   Card,
   CardContent,
   LinearProgress,
+  CircularProgress,
+  Alert,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogContentText,
+  DialogActions,
 } from '@mui/material';
 import {
   Add as AddIcon,
   Folder as FolderIcon,
   ChevronRight as ChevronRightIcon,
+  Delete as DeleteIcon,
 } from '@mui/icons-material';
 import Link from 'next/link';
-import type { ProjectSummary } from '@/lib/types';
-
-// Mock projects for initial display
-const mockProjects: ProjectSummary[] = [
-  {
-    name: 'hex-ade',
-    path: '/home/kellyb_dev/projects/hex-ade',
-    has_spec: true,
-    stats: { passing: 23, in_progress: 1, total: 40, percentage: 57.5 },
-    default_concurrency: 3,
-  },
-  {
-    name: 'example-app',
-    path: '/workspace/example-app',
-    has_spec: false,
-    stats: { passing: 0, in_progress: 0, total: 10, percentage: 0 },
-    default_concurrency: 2,
-  },
-];
+import { useProjects, useDeleteProject } from '@/hooks/useProjects';
 
 export default function ProjectsPage() {
-  const [projects, setProjects] = useState<ProjectSummary[]>(mockProjects);
-  const [loading, setLoading] = useState(false);
+  const { data: projects, isLoading, error, refetch } = useProjects();
+  const deleteProject = useDeleteProject();
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+
+  const handleDelete = async () => {
+    if (!projectToDelete) return;
+    try {
+      await deleteProject.mutateAsync(projectToDelete);
+      setProjectToDelete(null);
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+    }
+  };
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto', display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: 400 }}>
+        <CircularProgress />
+      </Box>
+    );
+  }
+
+  // Show error state
+  if (error) {
+    return (
+      <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          Failed to load projects: {error.message}
+        </Alert>
+        <Button variant="outlined" onClick={() => refetch()}>
+          Retry
+        </Button>
+      </Box>
+    );
+  }
 
   return (
     <Box sx={{ p: 3, maxWidth: 1200, mx: 'auto' }}>
@@ -64,8 +89,8 @@ export default function ProjectsPage() {
       </Box>
 
       <Grid container spacing={3}>
-        {projects.map((project) => (
-          <Grid item xs={12} md={6} key={project.name}>
+        {projects?.projects.map((project) => (
+          <Grid size={{ xs: 12, md: 6 }} key={project.name}>
             <Card 
               component={Link}
               href={`/?project=${project.name}`}
@@ -87,7 +112,24 @@ export default function ProjectsPage() {
                       <Typography variant="h6" fontWeight={600}>
                         {project.name}
                       </Typography>
-                      <ChevronRightIcon color="action" />
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <ChevronRightIcon color="action" />
+                        <IconButton
+                          size="small"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setProjectToDelete(project.name);
+                          }}
+                          sx={{
+                            p: 0.5,
+                            color: 'text.secondary',
+                            '&:hover': { color: 'error.main' },
+                          }}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </Box>
                     </Box>
                     <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                       {project.path}
@@ -102,7 +144,7 @@ export default function ProjectsPage() {
                       />
                       <Chip 
                         size="small" 
-                        label={`Concurrency: ${project.default_concurrency}`}
+                        label={`Concurrency: ${project.default_concurrency || 3}`}
                         variant="outlined"
                       />
                     </Stack>
@@ -113,16 +155,16 @@ export default function ProjectsPage() {
                           Progress
                         </Typography>
                         <Typography variant="caption" fontWeight={600}>
-                          {Math.round(project.stats.percentage)}%
+                          {Math.round(project.stats?.percentage || 0)}%
                         </Typography>
                       </Box>
                       <LinearProgress 
                         variant="determinate" 
-                        value={project.stats.percentage} 
+                        value={project.stats?.percentage || 0} 
                         sx={{ height: 6, borderRadius: 1 }}
                       />
                       <Typography variant="caption" color="text.secondary" sx={{ mt: 0.5, display: 'block' }}>
-                        {project.stats.passing} / {project.stats.total} features complete
+                        {project.stats?.passing || 0} / {project.stats?.total || 0} features complete
                       </Typography>
                     </Box>
                   </Box>
@@ -133,7 +175,7 @@ export default function ProjectsPage() {
         ))}
       </Grid>
 
-      {projects.length === 0 && (
+      {projects?.projects.length === 0 && (
         <Paper sx={{ p: 4, textAlign: 'center' }}>
           <Typography variant="h6" color="text.secondary" gutterBottom>
             No projects yet
@@ -148,6 +190,31 @@ export default function ProjectsPage() {
           </Link>
         </Paper>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog
+        open={projectToDelete !== null}
+        onClose={() => setProjectToDelete(null)}
+      >
+        <DialogTitle>Delete Project</DialogTitle>
+        <DialogContent>
+          <DialogContentText>
+            Are you sure you want to delete &quot;{projectToDelete}&quot;?
+            This will remove the project from the registry but preserve files on disk.
+          </DialogContentText>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setProjectToDelete(null)}>Cancel</Button>
+          <Button 
+            onClick={handleDelete} 
+            color="error" 
+            variant="contained"
+            disabled={deleteProject.isPending}
+          >
+            {deleteProject.isPending ? 'Deleting...' : 'Delete'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }
