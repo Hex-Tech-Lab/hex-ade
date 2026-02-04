@@ -8,14 +8,14 @@
 
 import React, { useState } from 'react';
 import {
-  Box, AppBar, Toolbar, Typography, IconButton, Tooltip, Stack, useTheme,
+  Box, AppBar, Toolbar, Typography, IconButton, Stack,
 } from '@mui/material';
 import {
   PlayArrow as PlayIcon, Stop as StopIcon,
-  Chat as ChatIcon, Terminal as TerminalIcon,
+  Chat as ChatIcon,
   Dashboard as DashIcon, Layers as LayersIcon,
 } from '@mui/icons-material';
-import type { Feature, ActiveAgent, ProjectStats, DevServerStatus } from '../lib/types';
+import type { Feature, ProjectStats } from '../lib/types';
 import { ProjectSelector } from '../components/ProjectSelector';
 import { DevServerControl } from '../components/DevServerControl';
 import { MetricsBar } from '../components/MetricsBar';
@@ -88,7 +88,7 @@ export default function Home() {
               inProgress={mockFeatures.filter(f => f.in_progress)} 
               done={mockFeatures.filter(f => f.passes)} 
               onFeatureClick={()=>{}} 
-              activeAgents={[{ agentName: 'Spark', featureId: 23 } as any]}
+              activeAgents={[{ agentIndex: 0, agentName: 'Spark', featureId: 23, featureIds: [23], agentType: 'coding', featureName: 'Feature 23', state: 'working', thought: 'Processing', timestamp: new Date().toISOString(), logs: [] }]}
             />
           </Box>
           <DebugPanel logs={[]} />

@@ -81,7 +81,7 @@ export function ProjectSelector({
           labelId="project-select-label"
           value={selectedProject || '__none__'}
           label="Project"
-          onChange={handleChange as any}
+          onChange={(e) => handleChange(e as any)}
           disabled={isLoading}
           sx={{
             '& .MuiSelect-select': {

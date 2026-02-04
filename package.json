@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "description": "Hexagonal Autonomous Development Environment",
   "private": true,
+  "dependencies": {
+    "next": "16.1.6"
+  },
   "scripts": {
     "dev": "pnpm --filter web dev",
     "build": "pnpm --filter web build",
