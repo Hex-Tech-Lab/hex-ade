@@ -30,7 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .utils.response import error_response
+from utils.response import error_response
 from .routers import (
     agent_router,
     assistant_chat_router,
@@ -97,27 +97,48 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(
         status_code=exc.status_code,
-        content={"status": "error", "error": {"code": str(exc.status_code), "message": exc.detail}},
+        content={
+            "status": "error",
+            "error": {"code": str(exc.status_code), "message": exc.detail},
+        },
     )
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError):
     return JSONResponse(
         status_code=422,
-        content={"status": "error", "error": {"code": "422", "message": str(exc.errors()), "details": exc.errors()}},
+        content={
+            "status": "error",
+            "error": {
+                "code": "422",
+                "message": str(exc.errors()),
+                "details": exc.errors(),
+            },
+        },
     )
+
 
 @app.exception_handler(Exception)
 async def general_exception_handler(request: Request, exc: Exception):
     logger.exception("Unhandled exception")
     return JSONResponse(
         status_code=500,
-        content={"status": "error", "error": {"code": "500", "message": "Internal Server Error", "details": str(exc)}},
+        content={
+            "status": "error",
+            "error": {
+                "code": "500",
+                "message": "Internal Server Error",
+                "details": str(exc),
+            },
+        },
     )
+
 
 # Add CORS middleware
 app.add_middleware(
@@ -141,10 +162,12 @@ app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(schedules_router)
 
+
 # Health check
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
+
 
 # Static files
 # Order matters: check for UI files, then catch-all for Next.js routing
@@ -157,17 +180,18 @@ if UI_DIST_DIR.exists():
         file_path = UI_DIST_DIR / path
         if file_path.exists() and file_path.is_file():
             return FileResponse(file_path)
-        
+
         # Fallback to index.html for SPA routing
         index_path = UI_DIST_DIR / "index.html"
         if index_path.exists():
             return FileResponse(index_path)
-        
+
         raise HTTPException(status_code=404, detail="Not found")
+
 
 # Main execution
 if __name__ == "__main__":
     import uvicorn
-    
+
     port = int(os.getenv("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
