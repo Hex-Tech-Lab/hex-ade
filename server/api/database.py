@@ -172,10 +172,14 @@ if not IS_SQLITE and DATABASE_URL and "sslmode" not in DATABASE_URL:
     else:
         DATABASE_URL += "?sslmode=require"
 
+# Engine Configuration
+engine_kwargs = {"pool_pre_ping": True, "echo": False}
+if not IS_SQLITE:
+    engine_kwargs["connect_args"] = {"sslmode": "require"}
+
 engine = create_engine(
     DATABASE_URL or "sqlite:///./hex_ade.db",
-    pool_pre_ping=True,
-    echo=False,
+    **engine_kwargs
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
