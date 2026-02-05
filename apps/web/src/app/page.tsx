@@ -273,7 +273,7 @@ export default function Home() {
           stats={stats} 
           statusMessage={isConnected ? `Connected: ${selectedProject || 'No project'}` : 'Disconnected'} 
           budgetUsed={0.42}
-          liveProgress={progress as any}
+          liveProgress={progress}
           isConnected={isConnected}
         />
         <FeedbackPanel messages={mockFeedback} />
