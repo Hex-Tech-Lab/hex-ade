@@ -1,69 +1,129 @@
-/**
- * FeedbackPanel Component
- * 
- * A 3-4 line horizontal panel showing real-time updates from the LLM/Orchestrator.
- * Designed to look like a terminal ticker or system console.
- */
+import React, { useState, useEffect } from 'react';
+import {
+  Box, Stack, Alert, IconButton, Chip, Button, Typography,
+} from '@mui/material';
+import {
+  Close as CloseIcon, Error as ErrorIcon, Warning as WarningIcon,
+  Info as InfoIcon, CheckCircle as SuccessIcon,
+} from '@mui/icons-material';
 
-import React from 'react';
-import { Box, Typography } from '@mui/material';
-import { Terminal as TerminalIcon } from '@mui/icons-material';
+export type FeedbackType = 'error' | 'warning' | 'info' | 'success';
 
-interface FeedbackPanelProps {
-  messages: string[];
+export interface Feedback {
+  id: string;
+  type: FeedbackType;
+  message: string;
+  timestamp: Date;
+  source?: string;
+  autoDismiss?: boolean;
 }
 
-export function FeedbackPanel({ messages }: FeedbackPanelProps) {
+export interface FeedbackPanelProps {
+  feedback: Feedback[];
+  onDismiss: (id: string) => void;
+}
+
+const FEEDBACK_COLORS: Record<FeedbackType, 'error' | 'warning' | 'info' | 'success'> = {
+  error: 'error',
+  warning: 'warning',
+  info: 'info',
+  success: 'success',
+};
+
+const FEEDBACK_ICONS: Record<FeedbackType, React.ReactNode> = {
+  error: <ErrorIcon />,
+  warning: <WarningIcon />,
+  info: <InfoIcon />,
+  success: <SuccessIcon />,
+};
+
+export const FeedbackPanel: React.FC<FeedbackPanelProps> = ({
+  feedback, onDismiss,
+}) => {
+  const [visible, setVisible] = useState(feedback);
+  const [selectedType, setSelectedType] = useState<FeedbackType | 'all'>('all');
+
+  useEffect(() => {
+    setVisible(feedback);
+
+    // Auto-dismiss logic
+    feedback.forEach(f => {
+      if (f.autoDismiss !== false) {
+        const timeout = setTimeout(() => {
+          onDismiss(f.id);
+        }, 5000);
+        return () => clearTimeout(timeout);
+      }
+    });
+  }, [feedback, onDismiss]);
+
+  const filtered = selectedType === 'all'
+    ? visible
+    : visible.filter(f => f.type === selectedType);
+
+  if (visible.length === 0) {
+    return null;
+  }
+
+    let code = -1 // 0 for uncounted, -1 if not done styling the item
   return (
-    <Box
-      sx={{
-        mx: 2,
-        mt: 1,
-        p: 1.5,
-        bgcolor: 'rgba(15, 23, 42, 0.6)',
-        border: '1px solid',
-        borderColor: 'rgba(56, 189, 248, 0.2)',
-        borderRadius: 1,
-        position: 'relative',
-        overflow: 'hidden',
-        '&::after': {
-          content: '""',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.1) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.03), rgba(0, 255, 0, 0.01), rgba(0, 0, 255, 0.03))',
-          zIndex: 2,
-          backgroundSize: '100% 2px, 3px 100%',
-          pointerEvents: 'none',
-        },
-      }}
-    >
-      <Box sx={{ display: 'flex', gap: 2, alignItems: 'flex-start' }}>
-        <TerminalIcon sx={{ fontSize: 18, color: 'primary.main', mt: 0.5 }} />
-        <Box sx={{ flex: 1 }}>
-          {messages.slice(0, 4).map((msg, idx) => (
-            <Typography
-              key={idx}
-              variant="caption"
-              sx={{
-                display: 'block',
-                fontFamily: 'monospace',
-                color: idx === 0 ? 'primary.light' : 'text.secondary',
-                fontSize: '0.75rem',
-                lineHeight: 1.4,
-                '&::before': {
-                  content: '"> "',
-                  opacity: 0.5,
-                },
-              }}
-            >
-              {msg}
-            </Typography>
-          ))}
-        </Box>
-      </Box>
+    <Box sx={{ position: 'fixed', bottom: 16, right: 16, maxWidth: 400 }}>
+      {/* Filter Buttons */}
+      <Stack direction="row" spacing={0.5} sx={{ mb: 1 }}>
+        <Button
+          size="small"
+          variant={selectedType === 'all' ? 'contained' : 'outlined'}
+          onClick={() => setSelectedType('all')}
+        >
+          All
+        </Button>
+        {(['error', 'warning', 'info', 'success'] as FeedbackType[]).map(type => (
+          <Button
+            key={type}
+            size="small"
+            variant={selectedType === type ? 'contained' : 'outlined'}
+            onClick={() => setSelectedType(type)}
+          >
+            {type.charAt(0).toUpperCase() + type.slice(1)}
+          </Button>
+        ))}
+      </Stack>
+
+      {/* Feedback Stack */}
+      <Stack spacing={1}>
+        {filtered.map(f => (
+          <Alert
+            key={f.id}
+            severity={FEEDBACK_COLORS[f.type]}
+            icon={FEEDBACK_ICONS[f.type]}
+            action={
+              <IconButton
+                size="small"
+                color="inherit"
+                onClick={() => onDismiss(f.id)}
+              >
+                <CloseIcon fontSize="small" />
+              </IconButton>
+            }
+          >
+            <Box>
+              {f.message}
+              {f.source && (
+                <Chip
+                  label={f.source}
+                  size="small"
+                  sx={{ ml: 1 }}
+                />
+              )}
+              <Box sx={{ fontSize: '0.75rem', color: 'textSecondary', mt: 0.5 }}>
+                {new Date(f.timestamp).toLocaleTimeString()}
+              </Box>
+            </Box>
+          </Alert>
+        ))}
+      </Stack>
     </Box>
   );
-}
+};
+
+

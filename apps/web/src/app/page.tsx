@@ -15,6 +15,7 @@ import {
   Dashboard as DashIcon, Layers as LayersIcon,
   AutoFixHigh as MagicIcon,
   Terminal as TerminalIcon,
+  Schedule as ScheduleIcon,
 } from '@mui/icons-material';
 import type { ProjectStats } from '@/lib/types';
 import { ProjectSelector } from '@/components/ProjectSelector';
@@ -25,10 +26,14 @@ import { MetricsBar } from '@/components/MetricsBar';
 import { KanbanBoard } from '@/components/KanbanBoard';
 import { DebugPanel } from '@/components/DebugPanel';
 import { FeedbackPanel } from '@/components/FeedbackPanel';
+import { SettingsModal } from '@/components/SettingsModal';
+import { ScheduleModal } from '@/components/ScheduleModal';
+import { AssistantPanel } from '@/components/AssistantPanel';
 import { ChatFlyover } from '@/components/ChatFlyover';
 import { SpecCreationChat } from '@/components/SpecCreationChat';
 import { ExpandProjectModal } from '@/components/ExpandProjectModal';
 import { DependencyGraph } from '@/components/DependencyGraph';
+import { KeyboardHelp } from '@/components/KeyboardHelp';
 import { useProjects, useFeatures } from '@/hooks/useProjects';
 import { useProjectWebSocket } from '@/hooks/useWebSocket';
 import { useAssistantChat } from '@/hooks/useAssistantChat';
@@ -49,12 +54,15 @@ export default function Home() {
   const [currentConcurrency, setCurrentConcurrency] = useState<number | null>(null);
   const [yoloMode, setYoloMode] = useState(false);
   
-  const [specCreationOpen, setSpecCreationOpen] = useState(false);
-  const [expandProjectOpen, setExpandProjectOpen] = useState(false);
-  const [dependencyGraphOpen, setDependencyGraphOpen] = useState(false);
-  const [missionControlOpen, setMissionControlOpen] = useState(false);
+   const [specCreationOpen, setSpecCreationOpen] = useState(false);
+   const [expandProjectOpen, setExpandProjectOpen] = useState(false);
+   const [dependencyGraphOpen, setDependencyGraphOpen] = useState(false);
+   const [missionControlOpen, setMissionControlOpen] = useState(false);
+    const [showSettings, setShowSettings] = useState(false);
+    const [showSchedule, setShowSchedule] = useState(false);
+    const [keyboardHelpOpen, setKeyboardHelpOpen] = useState(false);
 
-
+ 
 
   const handleSpecCreation = useCallback(() => {
     setSpecCreationOpen(true);
@@ -68,19 +76,23 @@ export default function Home() {
     setMissionControlOpen(prev => !prev);
   }, []);
 
-  useEffect(() => {
-    const handleKeyPress = (event: KeyboardEvent) => {
-      if (event.key === 'e' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-        setExpandProjectOpen(prev => !prev);
-      }
-      if (event.key === 'm' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
-        setMissionControlOpen(prev => !prev);
-      }
-    };
+   useEffect(() => {
+     const handleKeyPress = (event: KeyboardEvent) => {
+       if (event.key === 'e' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+         setExpandProjectOpen(prev => !prev);
+       }
+       if (event.key === 'm' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+         setMissionControlOpen(prev => !prev);
+       }
+       if (event.key === 's' && !event.shiftKey && !event.metaKey && !event.ctrlKey) {
+         event.preventDefault();
+         setShowSettings(true);
+       }
+     };
 
-    window.addEventListener('keydown', handleKeyPress);
-    return () => window.removeEventListener('keydown', handleKeyPress);
-  }, []);
+     window.addEventListener('keydown', handleKeyPress);
+     return () => window.removeEventListener('keydown', handleKeyPress);
+   }, []);
   
   // Load real projects from API
   const { data: apiData, isLoading: projectsLoading, error: projectsError } = useProjects();
@@ -177,19 +189,35 @@ export default function Home() {
     }
   };
   
-  // Calculate stats from real data
-  const allFeatures = featuresData
-    ? [...featuresData.pending, ...featuresData.in_progress, ...featuresData.done]
-    : [];
+// Handler functions
+const handleSettingsSave = (settings: { theme: string; fontSize: string }) => {
+  console.log('Settings saved:', settings);
+  // TODO: Apply settings globally
+};
 
-  const stats: ProjectStats = featuresData ? {
-    passing: allFeatures.filter(f => f.passes).length,
-    in_progress: allFeatures.filter(f => f.in_progress).length,
-    total: allFeatures.length,
-    percentage: allFeatures.length > 0 
-      ? (allFeatures.filter(f => f.passes).length / allFeatures.length) * 100 
-      : 0
-  } : { passing: 0, in_progress: 0, total: 0, percentage: 0 };
+const handleScheduleCreate = (scheduleConfig: { frequency: string; time: string; timezone: string; cronExpression?: string }) => {
+  console.log('Schedule created:', scheduleConfig);
+  // TODO: Implement scheduling API call
+};
+
+const handleFeedbackDismiss = (id: string) => {
+  console.log('Feedback dismissed:', id);
+  // TODO: Implement feedback dismissal
+};
+
+   // Calculate stats from real data
+   const allFeatures = featuresData
+     ? [...featuresData.pending, ...featuresData.in_progress, ...featuresData.done]
+     : [];
+
+   const stats: ProjectStats = featuresData ? {
+     passing: allFeatures.filter(f => f.passes).length,
+     in_progress: allFeatures.filter(f => f.in_progress).length,
+     total: allFeatures.length,
+     percentage: allFeatures.length > 0
+       ? (allFeatures.filter(f => f.passes).length / allFeatures.length) * 100
+       : 0
+   } : { passing: 0, in_progress: 0, total: 0, percentage: 0 };
   
   // Show loading state
   if (projectsLoading) {
@@ -234,16 +262,21 @@ export default function Home() {
             <Box sx={{ flex: 1 }} />
             
             <Stack direction="row" spacing={1} alignItems="center">
-               <Tooltip title="Create Specification">
-                 <IconButton 
-                   size="small" 
-                   onClick={handleSpecCreation} 
-                   disabled={!selectedProject}
-                   color={specCreationOpen ? 'primary' : 'default'}
-                 >
-                   <MagicIcon fontSize="small" />
-                 </IconButton>
-               </Tooltip>
+                <Tooltip title="Create Specification">
+                  <IconButton
+                    size="small"
+                    onClick={handleSpecCreation}
+                    disabled={!selectedProject}
+                    color={specCreationOpen ? 'primary' : 'default'}
+                  >
+                    <MagicIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Schedule">
+                  <IconButton size="small" onClick={() => setShowSchedule(true)}>
+                    <ScheduleIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
                <Box sx={{ width: 1, height: 16, bgcolor: '#1e293b' }} />
                <AgentControl
                  projectName={selectedProject}
@@ -276,7 +309,7 @@ export default function Home() {
           liveProgress={progress}
           isConnected={isConnected}
         />
-        <FeedbackPanel messages={mockFeedback} />
+         {/* Feedback panel removed - using floating alerts instead */}
 
         {/* Board & Mission Control */}
         <Box sx={{ flex: 1, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'auto' }}>
@@ -327,15 +360,40 @@ export default function Home() {
         projectName={selectedProject || ''}
       />
 
-      {/* Dependency Graph Modal */}
-      <DependencyGraph
-        open={dependencyGraphOpen}
-        onClose={() => setDependencyGraphOpen(false)}
-        projectName={selectedProject}
-      />
+       {/* Dependency Graph Modal */}
+       <DependencyGraph
+         open={dependencyGraphOpen}
+         onClose={() => setDependencyGraphOpen(false)}
+         projectName={selectedProject}
+       />
 
-    </Box>
-  );
+       {/* Settings Modal */}
+       <SettingsModal
+         open={showSettings}
+         onClose={() => setShowSettings(false)}
+         onSave={handleSettingsSave}
+       />
+
+       {/* Schedule Modal */}
+       <ScheduleModal
+         open={showSchedule}
+         onClose={() => setShowSchedule(false)}
+         onSchedule={handleScheduleCreate}
+       />
+
+       {/* Feedback Panel */}
+       <FeedbackPanel
+         feedback={mockFeedback.map((msg, idx) => ({
+           id: `feedback-${idx}`,
+            type: 'info' as const,
+           message: msg,
+           timestamp: new Date(),
+         }))}
+         onDismiss={handleFeedbackDismiss}
+       />
+
+     </Box>
+   );
 }
 
 
