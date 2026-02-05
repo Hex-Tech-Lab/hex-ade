@@ -161,7 +161,7 @@ export function ExpandProjectChat({
     };
     
     // Handle connection errors
-    ws.onerror = (_error) => {
+    ws.onerror = () => {
       setMessages(prev => [
         ...prev,
         {

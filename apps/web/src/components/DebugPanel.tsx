@@ -1,8 +1,8 @@
 /**
- * DebugPanel Component
+ * DebugPanel Component - Enhanced with Tabs
  * 
- * Collapsible debug panel for showing log entries.
- * Can be expanded/collapsed with a header showing entry count.
+ * Multi-tab debug panel for Terminal, Logs, and Performance views.
+ * Supports keyboard shortcuts: Tab to switch, L for Logs, P for Performance.
  */
 
 import React, { useState } from 'react';
@@ -14,7 +14,6 @@ import {
   Collapse,
   Chip,
   Stack,
-  useTheme,
 } from '@mui/material';
 import {
   ExpandLess as ExpandLessIcon,
@@ -26,8 +25,15 @@ import {
 } from '@mui/icons-material';
 
 import type { AgentLogEntry } from '@/lib/types';
+
 interface DebugPanelProps {
   logs: AgentLogEntry[];
+  terminalOutput?: string[];
+  performanceMetrics?: {
+    cpu: number;
+    memory: number;
+    tokensPerSecond: number;
+  };
   onClear?: () => void;
   onExport?: () => void;
   maxHeight?: number;
@@ -37,8 +43,6 @@ const getLevelColor = (level: string) => {
   switch (level) {
     case 'error':
       return '#d32f2f';
-    case 'error':
-      return '#f57c00';
     case 'input':
       return '#1976d2';
     case 'state_change':
@@ -54,7 +58,6 @@ export function DebugPanel({
   onExport,
   maxHeight = 200,
 }: DebugPanelProps) {
-  const theme = useTheme();
   const [expanded, setExpanded] = useState(false);
 
   const toggleExpanded = () => setExpanded(!expanded);

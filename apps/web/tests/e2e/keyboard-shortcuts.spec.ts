@@ -7,8 +7,6 @@ test.describe('Keyboard Shortcuts & Integration', () => {
     // Press M key
     await page.keyboard.press('M')
     
-    // Should now show Mission Control content
-    const missionControl = page.locator('[data-testid="mission-control"]').first()
     // We can't easily test the modal since it may need project data
     // But we can at least test that the page doesn't crash
     await expect(page).toHaveTitle(/hex-ade/i)

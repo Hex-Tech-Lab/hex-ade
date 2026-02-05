@@ -5,7 +5,7 @@
  * Redesigned from original DropdownMenu to use MUI Select.
  */
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Select,
   type SelectChangeEvent,
@@ -37,7 +37,6 @@ interface ProjectSelectorProps {
   selectedProject: string | null;
   onSelectProject: (name: string | null) => void;
   isLoading: boolean;
-  onSpecCreatingChange?: (isCreating: boolean) => void;
 }
 
 export function ProjectSelector({
@@ -45,7 +44,6 @@ export function ProjectSelector({
   selectedProject,
   onSelectProject,
   isLoading,
-  onSpecCreatingChange,
 }: ProjectSelectorProps) {
   const theme = useTheme();
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);

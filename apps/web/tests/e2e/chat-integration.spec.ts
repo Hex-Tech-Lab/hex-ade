@@ -74,12 +74,6 @@ test.describe('Chat Interfaces E2E', () => {
 
   test('should show dark theme consistently', async ({ page }) => {
     // Check for dark theme background
-    const darkThemeElements = page.locator('[style*="background-color: #0f172a"]').or(
-      page.locator('[style*="background-color: #020617"]').or(
-        page.locator('.dark').or(page.locator('[data-theme="dark"]'))
-      )
-    )
-
     // Main dashboard should be dark
     await expect(page.locator('.MuiPaper-root').first()).toBeVisible()
   })
@@ -125,12 +119,6 @@ test.describe('Integration Scenarios E2E', () => {
 
     // Test that alert/toast areas exist for error messages
     // This is more of a structural test
-    const feedbackArea = page.locator('text=Failed').or(
-      page.locator('[role="alert"]').or(
-        page.locator('.MuiAlert-root')
-      )
-    )
-
     // May or may not be visible, but structure should exist
     expect(true).toBe(true) // Placeholder - in real app would check error states
   })

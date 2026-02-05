@@ -1,6 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { render, screen, fireEvent } from '@testing-library/react'
-import userEvent from '@testing-library/user-event'
 import { AgentControl } from '@/components/AgentControl'
 import type { AgentStatus } from '@/lib/types'
 
@@ -43,31 +42,27 @@ describe('AgentControl Component', () => {
 
   it('calls onStart with correct parameters when start button clicked', async () => {
     const onStart = vi.fn()
-    const user = userEvent.setup()
 
     render(<AgentControl {...defaultProps} onStart={onStart} />)
 
     const startButton = screen.getByRole('button', { name: 'Start Agent' })
-    await user.click(startButton)
+    await fireEvent.click(startButton)
 
     expect(onStart).toHaveBeenCalledWith(3, false) // default concurrency and yolo mode
   })
 
   it('calls onStop when stop button clicked', async () => {
     const onStop = vi.fn()
-    const user = userEvent.setup()
 
     render(<AgentControl {...defaultProps} status="running" onStop={onStop} />)
 
     const stopButton = screen.getByRole('button', { name: 'Stop Agent' })
-    await user.click(stopButton)
+    await fireEvent.click(stopButton)
 
     expect(onStop).toHaveBeenCalled()
   })
 
   it('updates concurrency slider value', async () => {
-    const user = userEvent.setup()
-
     render(<AgentControl {...defaultProps} />)
 
     const slider = screen.getByRole('slider')

@@ -89,7 +89,7 @@ export default function Home() {
   const { data: featuresData } = useFeatures(selectedProject);
   
   // WebSocket for real-time updates
-  const { logs, isConnected, activeAgents, orchestratorStatus } = useProjectWebSocket(selectedProject);
+  const { logs, isConnected, activeAgents, orchestratorStatus, progress } = useProjectWebSocket(selectedProject);
 
   // Map ActiveAgent to AgentWithMetrics with default metrics
   const agentsWithMetrics = activeAgents.map(agent => ({
@@ -272,7 +272,9 @@ export default function Home() {
         <MetricsBar 
           stats={stats} 
           statusMessage={isConnected ? `Connected: ${selectedProject || 'No project'}` : 'Disconnected'} 
-          budgetUsed={0.42} 
+          budgetUsed={0.42}
+          liveProgress={progress as any}
+          isConnected={isConnected}
         />
         <FeedbackPanel messages={mockFeedback} />
 
@@ -280,8 +282,7 @@ export default function Home() {
         <Box sx={{ flex: 1, p: 1.5, display: 'flex', flexDirection: 'column', gap: 1.5, overflow: 'auto' }}>
           {missionControlOpen && (
             <AgentMissionControl 
-              projectName={selectedProject} 
-              activeAgents={activeAgents}
+              activeAgents={agentsWithMetrics}
               orchestratorStatus={orchestratorStatus}
             />
           )}

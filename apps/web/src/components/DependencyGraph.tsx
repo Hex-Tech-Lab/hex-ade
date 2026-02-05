@@ -61,7 +61,6 @@ export function DependencyGraph({
   open,
   onClose,
 }: DependencyGraphProps) {
-  const [graph, setGraph] = useState<DependencyGraphType | null>(null);
   const [nodes, setNodes] = useState<Node[]>([]);
   const [edges, setEdges] = useState<Edge[]>([]);
   const [agentNodes, setAgentNodes] = useState<AgentNode[]>([]);
@@ -144,7 +143,6 @@ export function DependencyGraph({
 
       try {
         const data = await getDependencyGraph(projectName);
-        setGraph(data);
         layoutGraph(data);
       } catch (error) {
         console.error('Failed to fetch dependency graph:', error);
@@ -476,22 +474,22 @@ export function DependencyGraph({
             </Typography>
             <Stack direction="row" spacing={1.5}>
               <Chip
-                label="&quot;M-bM-\\^-\\M-^S Done&quot;"
+                label="Done"
                 size="small"
                 sx={{ bgcolor: '#22c55e', color: '#fff' }}
               />
               <Chip
-                label="&quot;M-bM-\\^-\\M-3 In Progress&quot;"
+                label="In Progress"
                 size="small"
                 sx={{ bgcolor: '#eab308', color: '#fff' }}
               />
               <Chip
-                label="&quot;M-bM-^WM-\\^-K Pending&quot;"
+                label="Pending"
                 size="small"
                 sx={{ bgcolor: '#6b7280', color: '#fff' }}
               />
               <Chip
-                label="&quot;M-pM-\\^-\\M-^TM-5 Agent Active&quot;"
+                label="Agent Active"
                 size="small"
                 sx={{ bgcolor: '#f59e0b', color: '#fff' }}
               />

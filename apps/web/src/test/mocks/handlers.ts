@@ -16,9 +16,7 @@ export const handlers = [
   }),
 
   // Mock features API
-  http.get('/api/projects/:projectId/features', ({ params }) => {
-    const projectId = params.projectId as string
-
+  http.get('/api/projects/:projectId/features', () => {
     return HttpResponse.json({
       status: 'success',
       data: {
@@ -31,7 +29,7 @@ export const handlers = [
   }),
 
   // Mock agent status API
-  http.get('/api/projects/:projectId/agent/status', ({ params }) => {
+  http.get('/api/projects/:projectId/agent/status', () => {
     return HttpResponse.json({
       status: 'success',
       data: {

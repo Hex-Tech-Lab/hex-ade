@@ -6,33 +6,21 @@
  * Connects directly to useProjectWebSocket for live updates.
  */
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   Paper,
   Typography,
   Box,
   Grid,
   Chip,
-  Divider,
-  List,
-  ListItem,
-  ListItemText,
   Avatar,
   Button,
   CircularProgress,
   LinearProgress,
-  Fade,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
 } from '@mui/material';
 import {
-  PlayArrow as StartIcon,
-  Stop as StopIcon,
   Pause as PauseIcon,
   PlayCircle as ResumeIcon,
-  Timeline as TimelineIcon,
   Storage as MemoryIcon,
   Speed as CpuIcon,
 } from '@mui/icons-material';
@@ -53,7 +41,6 @@ interface AgentWithMetrics extends ActiveAgent {
 interface AgentMissionControlProps {
   orchestratorStatus: OrchestratorStatus | null;
   activeAgents: AgentWithMetrics[];
-  projectName: string | null;
   onAgentClick?: (agentId: string) => void;
   onPauseAll?: () => void;
   onResumeAll?: () => void;
@@ -83,15 +70,10 @@ const STATE_ICONS: Record<AgentState, string> = {
 export function AgentMissionControl({
   orchestratorStatus,
   activeAgents,
-  projectName,
-  onAgentClick,
   onPauseAll,
   onResumeAll,
   isLoading = false,
 }: AgentMissionControlProps) {
-  const [selectedAgent, setSelectedAgent] = useState<AgentWithMetrics | null>(null);
-  const [agentDetailOpen, setAgentDetailOpen] = useState(false);
-
   if (!orchestratorStatus) {
     return (
       <Paper
@@ -116,21 +98,9 @@ export function AgentMissionControl({
     );
   }
 
-  const { state, message, codingAgents, testingAgents, maxConcurrency, readyCount, blockedCount, recentEvents } = orchestratorStatus;
+  const { state, message, codingAgents, testingAgents, maxConcurrency, readyCount, blockedCount } = orchestratorStatus;
 
   const totalActive = codingAgents + testingAgents;
-
-  const handleAgentClick = (agent: AgentWithMetrics) => {
-    setSelectedAgent(agent);
-    setAgentDetailOpen(true);
-    onAgentClick?.(agent.agentIndex.toString());
-  };
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins}m ${secs}s`;
-  };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -198,6 +168,12 @@ export function AgentMissionControl({
                   height: '100%',
                   borderLeft: '3px solid',
                   borderLeftColor: STATE_COLORS[agent.state],
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: 'action.hover',
+                    transform: 'translateY(-2px)',
+                    boxShadow: 1,
+                  },
                 }}
               >
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
@@ -226,13 +202,52 @@ export function AgentMissionControl({
                     {STATE_ICONS[agent.state]}
                   </Typography>
                 </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
+                
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
                   <Typography variant="body2" sx={{ fontWeight: 600, fontSize: '0.75rem' }}>
                     #{agent.featureIds ? agent.featureIds[0] : agent.featureId}
                   </Typography>
                   <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
                     {agent.featureName}
                   </Typography>
+                  
+                  {/* Resource Usage Mini Bars */}
+                  <Box sx={{ display: 'flex', gap: 1, mt: 0.5 }}>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                      <CpuIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                      <LinearProgress
+                        variant="determinate"
+                        value={agent.cpuUsage}
+                        sx={{ 
+                          flex: 1, 
+                          height: 4, 
+                          borderRadius: 1,
+                          bgcolor: 'action.hover',
+                        }}
+                      />
+                    </Box>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flex: 1 }}>
+                      <MemoryIcon sx={{ fontSize: 12, color: 'text.secondary' }} />
+                      <LinearProgress
+                        variant="determinate"
+                        value={(agent.memoryUsage / 500) * 100}
+                        sx={{ 
+                          flex: 1, 
+                          height: 4, 
+                          borderRadius: 1,
+                          bgcolor: 'action.hover',
+                        }}
+                      />
+                    </Box>
+                  </Box>
+                  
+                  {/* Stats Row */}
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 0.5 }}>
+                    <Typography variant="caption" sx={{ fontSize: '0.6rem', color: 'text.secondary' }}>
+                      {agent.tasksCompleted} tasks
+                    </Typography>
+                  </Box>
+                  
                   {agent.thought && (
                     <Typography
                       variant="caption"
@@ -243,6 +258,7 @@ export function AgentMissionControl({
                         overflow: 'hidden',
                         textOverflow: 'ellipsis',
                         whiteSpace: 'nowrap',
+                        mt: 0.5,
                       }}
                      >
                        &ldquo;{agent.thought}&rdquo;
@@ -255,41 +271,32 @@ export function AgentMissionControl({
         </Grid>
       )}
 
-      {/* Activity Feed */}
-      {recentEvents && recentEvents.length > 0 && (
-        <Paper
-          variant="outlined"
-          sx={{
-            p: 1.5,
-            bgcolor: 'background.paper',
-          }}
-        >
-          <Typography variant="subtitle2" sx={{ fontWeight: 600, fontSize: '0.8rem', mb: 1 }}>
-            Activity Feed (last 5 events)
-          </Typography>
-          <List dense disablePadding>
-            {recentEvents.slice(0, 5).map((event, eventIdx) => (
-              <React.Fragment key={event.timestamp}>
-                <ListItem disableGutters sx={{ px: 0, py: 0.5 }}>
-                  <ListItemText
-                    primary={
-                      <Typography variant="caption" sx={{ fontSize: '0.75rem' }}>
-                        {event.eventType}
-                      </Typography>
-                    }
-                    secondary={
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.7rem' }}>
-                        {event.featureName ? `#${event.featureId} ${event.featureName}: ` : ''}{event.message}
-                      </Typography>
-                    }
-                  />
-                </ListItem>
-                {eventIdx < Math.min(recentEvents.length, 5) - 1 && <Divider component="li" />}
-              </React.Fragment>
-            ))}
-          </List>
-        </Paper>
-      )}
+      {/* Orchestrator Controls */}
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        {onPauseAll && state !== 'idle' && state !== 'complete' && (
+          <Button
+            variant="outlined"
+            size="small"
+            startIcon={<PauseIcon />}
+            onClick={onPauseAll}
+            disabled={isLoading}
+          >
+            Pause All
+          </Button>
+        )}
+        {onResumeAll && (state === 'idle' || state === 'complete') && (
+          <Button
+            variant="contained"
+            size="small"
+            startIcon={<ResumeIcon />}
+            onClick={onResumeAll}
+            disabled={isLoading}
+          >
+            Resume All
+          </Button>
+        )}
+      </Box>
     </Box>
   );
 }
+

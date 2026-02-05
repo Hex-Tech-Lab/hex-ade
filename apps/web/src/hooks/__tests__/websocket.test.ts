@@ -1,9 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { renderHook, act, waitFor } from '@testing-library/react'
-import { ReactNode } from 'react'
+import { renderHook, act } from '@testing-library/react'
 import { useProjectWebSocket } from '@/hooks/useWebSocket'
 import { useAssistantChat } from '@/hooks/useAssistantChat'
-import type { WSMessage, WSProgressMessage, WSAgentUpdateMessage } from '@/lib/types'
 
 // Mock WebSocket
 const mockWebSocket = vi.fn()
@@ -168,7 +166,7 @@ describe('useAssistantChat Hook', () => {
   })
 
   it('works with empty projectName options', () => {
-    const { result } = renderHook(() => useAssistantChat({}))
+    const { result } = renderHook(() => useAssistantChat({ projectName: '' }))
 
     expect(result.current.messages).toEqual([])
     expect(result.current.connectionStatus).toBe('disconnected')

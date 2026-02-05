@@ -161,7 +161,7 @@ export function SpecCreationChat({
     };
     
     // Handle connection errors
-    ws.onerror = (error) => {
+    ws.onerror = () => {
       setMessages(prev => [
         ...prev,
         {
@@ -206,10 +206,6 @@ export function SpecCreationChat({
       setAttachedImages(prev => [...prev, base64]);
     };
     reader.readAsDataURL(file);
-  };
-
-  const handleRemoveAttachment = (index: number) => {
-    setAttachedImages(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleExitToProject = () => {

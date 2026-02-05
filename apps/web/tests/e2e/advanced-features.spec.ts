@@ -85,12 +85,6 @@ test.describe('Layout and Navigation', () => {
     await page.goto('/')
 
     // Test if close buttons exist where expected
-    const modalCloseButtons = page.locator('button').filter({ has: page.locator('.MuiCloseIcon') }).or(
-      page.locator('button[aria-label="Close"]').or(
-        page.locator('data-testid=close-button')
-      )
-    )
-
     // There might be modal elements, so just verify structure
     expect(true).toBe(true) // Placeholder for actual modal testing
   })
@@ -139,10 +133,6 @@ test.describe('Data Persistence', () => {
 // Marco/Polo-like state consistency test
 test('should maintain application state across interactions', async ({ page }) => {
   await page.goto('/')
-
-  // Capture initial state
-  const initialHeader = await page.locator('text=HEX-ADE').isVisible()
-  const initialProjectsText = await page.locator('text=No project').isVisible()
 
   // Perform some interactions if available
   const startButton = page.locator('button:has-text("Start Agent")')

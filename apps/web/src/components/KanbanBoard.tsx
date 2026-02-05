@@ -12,7 +12,6 @@ import {
   Typography,
   Chip,
   Stack,
-  useTheme,
 } from '@mui/material';
 import {
   Schedule as PendingIcon,
@@ -46,8 +45,6 @@ export function KanbanBoard({
   onFeatureClick,
   activeAgents = [],
 }: KanbanBoardProps) {
-  const theme = useTheme();
-
   // Find active agent for a feature
   const getActiveAgentForFeature = (featureId: number): ActiveAgent | undefined => {
     return activeAgents.find((agent) => agent.featureId === featureId);
@@ -174,7 +171,6 @@ export function KanbanBoard({
                     feature={feature}
                     onClick={() => onFeatureClick(feature)}
                     isInProgress={column.id === 'in-progress'}
-                    allFeatures={[...pending, ...inProgress, ...done]}
                     activeAgent={getActiveAgentForFeature(feature.id)}
                   />
                 ))}

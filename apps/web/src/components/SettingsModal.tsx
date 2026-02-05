@@ -22,7 +22,6 @@ import {
   InputLabel,
   Slider,
   Paper,
-  Divider,
   Alert,
   CircularProgress,
   IconButton,
