@@ -721,26 +721,30 @@ async def poll_progress(websocket: WebSocket, project_name: str, project_dir: Pa
 async def project_websocket(websocket: WebSocket, project_name: str):
     """
     WebSocket endpoint for project updates.
-
-    Streams:
-    - Progress updates (passing/total counts)
-    - Agent status changes
-    - Agent stdout/stderr lines
     """
+    # Accept the connection immediately to satisfy the handshake
+    await websocket.accept()
+    
     if not validate_project_name(project_name):
-        await websocket.close(code=4000, reason="Invalid project name")
+        await websocket.send_json({"type": "error", "message": "Invalid project name"})
+        await websocket.close(code=4000)
         return
 
     project_dir = _get_project_path(project_name)
     if not project_dir:
-        await websocket.close(code=4004, reason="Project not found in registry")
+        await websocket.send_json({"type": "error", "message": "Project not found in registry"})
+        await websocket.close(code=4004)
         return
 
     if not project_dir.exists():
-        await websocket.close(code=4004, reason="Project directory not found")
+        await websocket.send_json({"type": "error", "message": "Project directory not found"})
+        await websocket.close(code=4004)
         return
 
-    await manager.connect(websocket, project_name)
+    # Add to connection manager (now without calling accept() again)
+    if project_name not in manager.active_connections:
+        manager.active_connections[project_name] = set()
+    manager.active_connections[project_name].add(websocket)
 
     # Get agent manager and register callbacks
     agent_manager = get_manager(project_name, project_dir, ROOT_DIR)

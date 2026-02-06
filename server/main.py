@@ -219,7 +219,15 @@ app.include_router(settings_router)
 app.include_router(schedules_router)
 
 # Main project websocket
-app.add_api_websocket_route("/ws/projects/{project_name}", project_websocket)
+@app.websocket("/ws/projects/{project_name}")
+async def projects_websocket(websocket: WebSocket, project_name: str):
+    await project_websocket(websocket, project_name)
+
+@app.websocket("/ws/debug")
+async def debug_websocket(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_text("Debug OK")
+    await websocket.close()
 
 
 # Health check
