@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/assistant", tags=["assistant-chat"])
 
+@router.websocket("/ws-test")
+async def assistant_test_ws(websocket: WebSocket):
+    await websocket.accept()
+    await websocket.send_text("OK")
+    await websocket.close()
+
 
 # ============================================================================
 # Pydantic Models
