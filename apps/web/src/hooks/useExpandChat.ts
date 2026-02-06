@@ -87,10 +87,9 @@ export function useExpandChat({
 
     setConnectionStatus('connecting')
     
-    const isProduction = process.env.NODE_ENV === 'production'
-    const protocol = 'wss:'
-    const host = isProduction ? 'ade-api.getmytestdrive.com' : window.location.host
-    const wsUrl = `${protocol}//${host}/api/expand/ws/${encodeURIComponent(projectName)}`
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const wsHost = isDev ? 'ws://localhost:8888' : 'wss://ade-api.getmytestdrive.com';
+    const wsUrl = `${wsHost}/api/expand/ws/${encodeURIComponent(projectName)}`
     
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws

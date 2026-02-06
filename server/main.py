@@ -18,7 +18,6 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 
-
 # Fix for Windows subprocess support in asyncio
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -35,34 +34,65 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .utils.response import error_response
-from .routers import (
-    agent_router,
-    assistant_chat_router,
-    devserver_router,
-    expand_project_router,
-    features_router,
-    filesystem_router,
-    projects_router,
-    schedules_router,
-    settings_router,
-    spec_creation_router,
-    terminal_router,
-)
-from .schemas import SetupStatus
-from .services.assistant_chat_session import (
-    cleanup_all_sessions as cleanup_assistant_sessions,
-)
-from .services.chat_constants import ROOT_DIR
-from .services.dev_server_manager import (
-    cleanup_all_devservers,
-    cleanup_orphaned_devserver_locks,
-)
-from .services.expand_chat_session import cleanup_all_expand_sessions
-from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
-from .services.scheduler_service import cleanup_scheduler, get_scheduler
-from .services.terminal_manager import cleanup_all_terminals
-from .websocket import project_websocket
+try:
+    from .utils.response import error_response
+    from .routers import (
+        agent_router,
+        assistant_chat_router,
+        devserver_router,
+        expand_project_router,
+        features_router,
+        filesystem_router,
+        projects_router,
+        schedules_router,
+        settings_router,
+        spec_creation_router,
+        terminal_router,
+    )
+    from .schemas import SetupStatus
+    from .services.assistant_chat_session import (
+        cleanup_all_sessions as cleanup_assistant_sessions,
+    )
+    from .services.chat_constants import ROOT_DIR
+    from .services.dev_server_manager import (
+        cleanup_all_devservers,
+        cleanup_orphaned_devserver_locks,
+    )
+    from .services.expand_chat_session import cleanup_all_expand_sessions
+    from .services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
+    from .services.scheduler_service import cleanup_scheduler, get_scheduler
+    from .services.terminal_manager import cleanup_all_terminals
+    from .websocket import project_websocket
+except ImportError:
+    # Fallback absolute imports if relative fails
+    from utils.response import error_response
+    from routers import (
+        agent_router,
+        assistant_chat_router,
+        devserver_router,
+        expand_project_router,
+        features_router,
+        filesystem_router,
+        projects_router,
+        schedules_router,
+        settings_router,
+        spec_creation_router,
+        terminal_router,
+    )
+    from schemas import SetupStatus
+    from services.assistant_chat_session import (
+        cleanup_all_sessions as cleanup_assistant_sessions,
+    )
+    from services.chat_constants import ROOT_DIR
+    from services.dev_server_manager import (
+        cleanup_all_devservers,
+        cleanup_orphaned_devserver_locks,
+    )
+    from services.expand_chat_session import cleanup_all_expand_sessions
+    from services.process_manager import cleanup_all_managers, cleanup_orphaned_locks
+    from services.scheduler_service import cleanup_scheduler, get_scheduler
+    from services.terminal_manager import cleanup_all_terminals
+    from websocket import project_websocket
 
 # Module logger
 logger = logging.getLogger(__name__)
@@ -172,6 +202,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # Include routers - Prefixes are defined within the routers themselves
@@ -186,6 +217,9 @@ app.include_router(expand_project_router)
 app.include_router(assistant_chat_router)
 app.include_router(settings_router)
 app.include_router(schedules_router)
+
+# Main project websocket
+app.add_api_websocket_route("/ws/projects/{project_name}", project_websocket)
 
 
 # Health check

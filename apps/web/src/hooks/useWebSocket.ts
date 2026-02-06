@@ -59,6 +59,24 @@ const MAX_LOGS = 100 // Keep last 100 log lines
 const MAX_ACTIVITY = 20 // Keep last 20 activity items
 const MAX_AGENT_LOGS = 500 // Keep last 500 log lines per agent
 
+/**
+ * Build WebSocket URL based on environment.
+ * Direct to port 8888 in dev to bypass Next.js proxy limitations.
+ * Direct to ade-api subdomain in prod.
+ */
+const getWebSocketUrl = (endpoint: string): string => {
+  if (typeof window === 'undefined') return '';
+  
+  const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+  const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+  
+  if (isDev) {
+    return `ws://localhost:8888${endpoint}`;
+  }
+  
+  return `wss://ade-api.getmytestdrive.com${endpoint}`;
+};
+
 export function useProjectWebSocket(projectName: string | null) {
   const [state, setState] = useState<WebSocketState>({
     progress: { type: 'progress', passing: 0, in_progress: 0, total: 0, percentage: 0 },
@@ -87,10 +105,7 @@ export function useProjectWebSocket(projectName: string | null) {
     if (!projectName) return; 
     
     // Build WebSocket URL
-    const isProduction = process.env.NODE_ENV === 'production'
-    const protocol = 'wss:'
-    const host = isProduction ? 'ade-api.getmytestdrive.com' : window.location.host
-    const wsUrl = `${protocol}//${host}/ws/projects/${encodeURIComponent(projectName)}`
+    const wsUrl = getWebSocketUrl(`/ws/projects/${encodeURIComponent(projectName)}`)
 
     try {
       const ws = new WebSocket(wsUrl)

@@ -74,16 +74,20 @@ export function ExpandProjectChat({
     setIsLoading(true);
 
     // WebSocket connection for real-time streaming
-    const ws = new WebSocket(`wss://ade-api.getmytestdrive.com/api/expand/ws/${encodeURIComponent(projectName)}`);
-    
-    // Send expand message
-    const expandMessage = {
-      type: 'expand',
-      prompt: inputValue,
-    };
-    ws.send(JSON.stringify(expandMessage));
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const wsHost = isDev ? 'ws://localhost:8888' : 'wss://ade-api.getmytestdrive.com';
+    const ws = new WebSocket(`${wsHost}/api/expand/ws/${encodeURIComponent(projectName)}`);
     
     // Handle incoming messages
+    ws.onopen = () => {
+      // Send expand message
+      const expandMessage = {
+        type: 'expand',
+        prompt: inputValue,
+      };
+      ws.send(JSON.stringify(expandMessage));
+    };
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       

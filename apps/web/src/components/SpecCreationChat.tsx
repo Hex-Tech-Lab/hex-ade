@@ -80,24 +80,28 @@ export function SpecCreationChat({
     setIsLoading(true);
 
     // WebSocket connection for real-time streaming
-    const ws = new WebSocket(`wss://ade-api.getmytestdrive.com/api/spec/ws/${encodeURIComponent(projectName)}`);
-    
-    // Send start message
-    const startMessage = {
-      type: 'start',
-      yolo_mode: yoloMode,
-    };
-    ws.send(JSON.stringify(startMessage));
-    
-    // Send user message
-    const wsMessage = {
-      type: 'message',
-      content: inputValue,
-      attachments: attachedImages,
-    };
-    ws.send(JSON.stringify(wsMessage));
+    const isDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+    const wsHost = isDev ? 'ws://localhost:8888' : 'wss://ade-api.getmytestdrive.com';
+    const ws = new WebSocket(`${wsHost}/api/spec/ws/${encodeURIComponent(projectName)}`);
     
     // Handle incoming messages
+    ws.onopen = () => {
+      // Send start message
+      const startMessage = {
+        type: 'start',
+        yolo_mode: yoloMode,
+      };
+      ws.send(JSON.stringify(startMessage));
+      
+      // Send user message
+      const wsMessage = {
+        type: 'message',
+        content: inputValue,
+        attachments: attachedImages,
+      };
+      ws.send(JSON.stringify(wsMessage));
+    };
+
     ws.onmessage = (event) => {
       const data = JSON.parse(event.data);
       

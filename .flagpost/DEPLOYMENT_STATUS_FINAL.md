@@ -23,3 +23,10 @@ The Phase 1 artifacts are stable, documented, and architecture-compliant. No P0/
 **Status**: 🟢 READY FOR MERGE TO MAIN
 **Approval Date**: 2026-02-05
 **Reviewer**: GC (Governing Coder)
+### WebSocket Infrastructure (Option B) Setup ✅
+- **Date**: 2026-02-06
+- **Subdomain**: ade-api.getmytestdrive.com (CNAME to hex-ade-api.onrender.com)
+- **Backend CORS**: Updated to allow Vercel origin and expose all headers.
+- **Frontend Config**: Updated useWebSocket, useAssistantChat, useExpandChat, and useSpecChat to connect directly to the backend subdomain in production and port 8888 in development.
+- **Race Conditions**: Fixed in ExpandProjectChat and SpecCreationChat components by adding onopen handlers.
+- **Status**: Backend ready for deploy; Frontend ready for deploy.
