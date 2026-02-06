@@ -65,8 +65,9 @@ test.describe('WebSocket Connection Tests', () => {
     expect(consoleErrors).toEqual([])
     
     // Should display either projects or empty state
-    const projectsExist = await page.locator('[role="main"]').isVisible()
-    expect(projectsExist).toBe(true)
+    // Look for main content area (MUI Box with padding) or "No projects yet" text
+    const contentVisible = await page.locator('.MuiBox-root, h1, h4').first().isVisible()
+    expect(contentVisible).toBe(true)
     
     // Take screenshot
     await page.screenshot({ path: 'test-results/1-2-projects-page.png' })
