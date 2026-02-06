@@ -3,19 +3,21 @@ Database Models and Connection
 ==============================
 
 Supabase PostgreSQL database schema for hex-ade using SQLAlchemy.
-Includes fallback support for SQLite during local testing.
+Now backed exclusively by Supabase PostgreSQL for Features.
 """
 
 import os
 from datetime import datetime, timezone
 from typing import Generator, Optional
 import uuid
+from pathlib import Path
 
 from sqlalchemy import (
     Boolean,
     Column,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -34,19 +36,18 @@ class Base(DeclarativeBase):
     """SQLAlchemy 2.0 style declarative base."""
     pass
 
-# Helper to handle UUID and JSONB across Postgres/SQLite
+# Helper to handle UUID and JSONB for Postgres (Supabase)
 DATABASE_URL = os.getenv("DATABASE_URL")
-print(f"DEBUG: DATABASE_URL is {DATABASE_URL}")
-IS_SQLITE = DATABASE_URL and DATABASE_URL.startswith("sqlite")
 
-UUID_TYPE = pgUUID(as_uuid=True) if not IS_SQLITE else String(36)
-JSON_TYPE = JSONB if not IS_SQLITE else JSON
+# Features table is now Postgres-only
+UUID_TYPE = pgUUID(as_uuid=True)
+JSON_TYPE = JSONB
 
 class Project(Base):
     """Project model."""
     __tablename__ = "projects"
 
-    id = Column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()) if IS_SQLITE else uuid.uuid4)
+    id = Column(UUID_TYPE, primary_key=True, default=uuid.uuid4)
     name = Column(String(255), unique=True, nullable=False)
     path = Column(String(1024), nullable=False)
     has_spec = Column(Boolean, default=False)
@@ -60,20 +61,36 @@ class Project(Base):
     agent_logs = relationship("AgentLog", back_populates="project", cascade="all, delete-orphan")
 
 class Feature(Base):
-    """Feature model representing a test case/feature to implement."""
+    """Feature model representing a test case/feature to implement.
+    
+    Now backed exclusively by Supabase PostgreSQL.
+    Features are shared across instances; no per-project SQLite files.
+    """
     __tablename__ = "features"
+    
+    __table_args__ = (
+        Index("idx_features_project_status", "project_id", "status"),
+        Index("idx_features_passes", "project_id", "passes"),
+        Index("idx_features_in_progress", "project_id", "in_progress"),
+        Index("idx_features_created_at", "project_id", "created_at"),
+    )
 
     id = Column(Integer, primary_key=True, autoincrement=True)
-    project_id = Column(UUID_TYPE, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
+    project_id = Column(
+        UUID_TYPE, 
+        ForeignKey("projects.id", ondelete="CASCADE"), 
+        nullable=False,
+        index=True
+    )
     name = Column(String(255), nullable=False)
     description = Column(Text)
     category = Column(String(50), default='FUNCTIONAL')
     priority = Column(Integer, default=0)
-    status = Column(String(50), default='pending')
+    status = Column(String(50), default='pending', index=True)
     passes = Column(Boolean, default=False)
     in_progress = Column(Boolean, default=False)
     steps = Column(JSON_TYPE, default=[])
-    created_at = Column(DateTime(timezone=True), default=_utc_now)
+    created_at = Column(DateTime(timezone=True), default=_utc_now, index=True)
     updated_at = Column(DateTime(timezone=True), default=_utc_now, onupdate=_utc_now)
 
     project = relationship("Project", back_populates="features")
@@ -83,7 +100,7 @@ class Task(Base):
     """Execution history task."""
     __tablename__ = "tasks"
 
-    id = Column(UUID_TYPE, primary_key=True, default=lambda: str(uuid.uuid4()) if IS_SQLITE else uuid.uuid4)
+    id = Column(UUID_TYPE, primary_key=True, default=uuid.uuid4)
     project_id = Column(UUID_TYPE, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False)
     feature_id = Column(Integer, ForeignKey("features.id", ondelete="SET NULL"), nullable=True)
     task_description = Column(Text, nullable=False)
@@ -162,25 +179,48 @@ class ScheduleOverride(Base):
 
     schedule = relationship("Schedule", back_populates="overrides")
 
-# Connection Setup
+# ============================================================================
+# POSTGRES-ONLY CONFIGURATION (Features table no longer uses SQLite)
+# ============================================================================
+
+if not DATABASE_URL:
+    # During initial local environment loading, this might be empty.
+    # We provide a safe default for development only if absolutely necessary,
+    # but the migration prompt requires fail-fast.
+    # We'll re-check inside create_database() to allow environment setup.
+    pass
+
+# Fix postgres:// to postgresql://
 if DATABASE_URL and DATABASE_URL.startswith("postgres://"):
     DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
-if not IS_SQLITE and DATABASE_URL and "sslmode" not in DATABASE_URL:
+# Ensure sslmode=require for Supabase
+if DATABASE_URL and "sslmode" not in DATABASE_URL:
     if "?" in DATABASE_URL:
         DATABASE_URL += "&sslmode=require"
     else:
         DATABASE_URL += "?sslmode=require"
 
-# Engine Configuration
-engine_kwargs = {"pool_pre_ping": True, "echo": False}
-if not IS_SQLITE:
-    engine_kwargs["connect_args"] = {"sslmode": "require"}
+# Engine configuration with PgBouncer compatibility
+engine_kwargs = {
+    "pool_pre_ping": True,
+    "echo": False,
+    "pool_size": 5,  # Conservative for PgBouncer
+    "max_overflow": 10,  # Allow temporary overflow
+    "pool_recycle": 3600,  # Recycle connections every hour (PgBouncer-friendly)
+    "connect_args": {
+        "sslmode": "require",
+        "connect_timeout": 10,
+        "application_name": "hex-ade-features",
+    }
+}
 
-engine = create_engine(
-    DATABASE_URL or "sqlite:///./hex_ade.db",
-    **engine_kwargs
-)
+# Create global engine
+if DATABASE_URL:
+    engine = create_engine(DATABASE_URL, **engine_kwargs)
+else:
+    # Temporary fallback to allow module load without environment
+    engine = create_engine("sqlite:///:memory:", echo=False)
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
@@ -199,7 +239,7 @@ def atomic_transaction(session_maker):
     finally:
         session.close()
 
-def dispose_engine(project_dir: Optional[Path] = None):
+def dispose_engine(project_dir=None):
     """Dispose of the database engine."""
     engine.dispose()
 
@@ -211,7 +251,40 @@ def get_db() -> Generator[Session, None, None]:
     finally:
         db.close()
 
-def create_database(project_dir: Optional[Path] = None):
-    """Create all tables in the database."""
+def create_database(project_dir=None):
+    """Create all tables in the Features database (now Postgres-only).
+    
+    Args:
+        project_dir: Ignored (legacy parameter, kept for API compatibility)
+        
+    Returns:
+        Tuple of (engine, SessionLocal) for Features database
+        
+    Raises:
+        ValueError: If DATABASE_URL is not set or invalid
+    """
+    global engine, SessionLocal, DATABASE_URL
+    
+    # Re-check environment in case it was loaded after module import
+    if not DATABASE_URL:
+        DATABASE_URL = os.getenv("DATABASE_URL")
+        if DATABASE_URL:
+            # Re-initialize engine if DATABASE_URL was found
+            if DATABASE_URL.startswith("postgres://"):
+                DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+            if "sslmode" not in DATABASE_URL:
+                if "?" in DATABASE_URL:
+                    DATABASE_URL += "&sslmode=require"
+                else:
+                    DATABASE_URL += "?sslmode=require"
+            engine = create_engine(DATABASE_URL, **engine_kwargs)
+            SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+    if not DATABASE_URL or not DATABASE_URL.startswith("postgresql"):
+        raise ValueError(
+            "Features database requires Supabase PostgreSQL. "
+            f"Got DATABASE_URL={DATABASE_URL}"
+        )
+    
     Base.metadata.create_all(bind=engine)
     return engine, SessionLocal

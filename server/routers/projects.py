@@ -4,6 +4,7 @@ Projects Router
 
 API endpoints for project management.
 Uses project registry for path lookups instead of fixed generations/ directory.
+Now integrated with Supabase PostgreSQL for Features.
 """
 
 import re
@@ -45,9 +46,7 @@ def _init_imports():
         return
 
     Path(__file__).parent.parent.parent
-    # if str(root) not in sys.path:
-    #     sys.path.insert(0, str(root))
-
+    
     from ..progress import count_passing_tests
     from ..agents.prompts import get_project_prompts_dir, scaffold_project_prompts
     from ..start import check_spec_exists
@@ -61,13 +60,10 @@ def _init_imports():
 
 def _get_registry_functions():
     """Get registry functions with lazy import."""
-    Path(__file__).parent.parent.parent
-    # if str(root) not in sys.path:
-    #     sys.path.insert(0, str(root))
-
     from ..agents.registry import (
         get_project_concurrency,
         get_project_path,
+        get_project_id_from_name,
         list_registered_projects,
         register_project,
         set_project_concurrency,
@@ -82,6 +78,7 @@ def _get_registry_functions():
         validate_project_path,
         get_project_concurrency,
         set_project_concurrency,
+        get_project_id_from_name,
     )
 
 
@@ -118,7 +115,7 @@ async def list_projects():
     _init_imports()
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     (_, _, _, list_registered_projects, validate_project_path,
-     get_project_concurrency, _) = _get_registry_functions()
+     get_project_concurrency, _, _) = _get_registry_functions()
 
     projects = list_registered_projects()
     result = []
@@ -151,7 +148,7 @@ async def create_project(project: ProjectCreate):
     _init_imports()
     assert _scaffold_project_prompts is not None  # guaranteed by _init_imports()
     (register_project, _, get_project_path, list_registered_projects,
-     _, _, _) = _get_registry_functions()
+     _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(project.name)
     project_path = Path(project.path).resolve()
@@ -233,7 +230,7 @@ async def get_project(name: str):
     _init_imports()
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
-    (_, _, get_project_path, _, _, get_project_concurrency, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, get_project_concurrency, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -263,13 +260,9 @@ async def get_project(name: str):
 async def delete_project(name: str, delete_files: bool = False):
     """
     Delete a project from the registry.
-
-    Args:
-        name: Project name to delete
-        delete_files: If True, also delete the project directory and files
     """
     _init_imports()
-    (_, unregister_project, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, unregister_project, get_project_path, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -293,6 +286,7 @@ async def delete_project(name: str, delete_files: bool = False):
             raise HTTPException(status_code=500, detail=f"Failed to delete project files: {e}")
 
     # Unregister from registry
+    # Note: Features in Supabase will be handled via CASCADE if linked to project record
     unregister_project(name)
 
     return success_response({
@@ -307,7 +301,7 @@ async def get_project_prompts(name: str):
     """Get the content of project prompt files."""
     _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -341,7 +335,7 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
     """Update project prompt files."""
     _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -371,7 +365,7 @@ async def update_project_prompts(name: str, prompts: ProjectPromptsUpdate):
 async def get_project_stats_endpoint(name: str):
     """Get current progress statistics for a project."""
     _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
@@ -389,19 +383,13 @@ async def get_project_stats_endpoint(name: str):
 async def reset_project(name: str, full_reset: bool = False):
     """
     Reset a project to its initial state.
-
-    Args:
-        name: Project name to reset
-        full_reset: If True, also delete prompts/ directory (triggers setup wizard)
-
-    Returns:
-        Dictionary with list of deleted files and reset type
     """
     _init_imports()
-    (_, _, get_project_path, _, _, _, _) = _get_registry_functions()
+    (_, _, get_project_path, _, _, _, _, get_project_id_from_name) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)
+    project_id = get_project_id_from_name(name)
 
     if not project_dir:
         raise HTTPException(status_code=404, detail=f"Project '{name}' not found")
@@ -417,12 +405,8 @@ async def reset_project(name: str, full_reset: bool = False):
             detail="Cannot reset project while agent is running. Stop the agent first."
         )
 
-    # Dispose of database engines to release file locks (required on Windows)
-    # Import here to avoid circular imports
-    from api.database import dispose_engine as dispose_features_engine
+    # Dispose of assistant database engine (per-project SQLite)
     from server.services.assistant_database import dispose_engine as dispose_assistant_engine
-
-    dispose_features_engine(project_dir)
     dispose_assistant_engine(project_dir)
 
     deleted_files: list[str] = []
@@ -431,26 +415,17 @@ async def reset_project(name: str, full_reset: bool = False):
         get_assistant_db_path,
         get_claude_assistant_settings_path,
         get_claude_settings_path,
-        get_features_db_path,
     )
 
-    # Build list of files to delete using path helpers (finds files at current location)
-    # Plus explicit old-location fallbacks for backward compatibility
-    db_path = get_features_db_path(project_dir)
+    # Delete assistant database file
     asst_path = get_assistant_db_path(project_dir)
     reset_files: list[Path] = [
-        db_path,
-        db_path.with_suffix(".db-wal"),
-        db_path.with_suffix(".db-shm"),
         asst_path,
         asst_path.with_suffix(".db-wal"),
         asst_path.with_suffix(".db-shm"),
         get_claude_settings_path(project_dir),
         get_claude_assistant_settings_path(project_dir),
-        # Also clean old root-level locations if they exist
-        project_dir / "features.db",
-        project_dir / "features.db-wal",
-        project_dir / "features.db-shm",
+        # Legacy locations
         project_dir / "assistant.db",
         project_dir / "assistant.db-wal",
         project_dir / "assistant.db-shm",
@@ -467,10 +442,22 @@ async def reset_project(name: str, full_reset: bool = False):
             except Exception as e:
                 raise HTTPException(status_code=500, detail=f"Failed to delete {file_path.name}: {e}")
 
+    # Reset Features in Supabase
+    if project_id:
+        from ..api.database import Feature, create_database
+        _, SessionLocal = create_database(project_dir)
+        with SessionLocal() as session:
+            try:
+                session.query(Feature).filter(Feature.project_id == project_id).delete()
+                session.commit()
+                deleted_files.append("Supabase: features (records deleted)")
+            except Exception as e:
+                session.rollback()
+                raise HTTPException(status_code=500, detail=f"Failed to reset Features in Supabase: {e}")
+
     # Full reset: also delete prompts directory
     if full_reset:
         from ..autocoder_paths import get_prompts_dir
-        # Delete prompts from both possible locations
         for prompts_dir in [get_prompts_dir(project_dir), project_dir / "prompts"]:
             if prompts_dir.exists():
                 try:
@@ -495,7 +482,7 @@ async def update_project_settings(name: str, settings: ProjectSettingsUpdate):
     assert _check_spec_exists is not None  # guaranteed by _init_imports()
     assert _get_project_prompts_dir is not None  # guaranteed by _init_imports()
     (_, _, get_project_path, _, _, get_project_concurrency,
-     set_project_concurrency) = _get_registry_functions()
+     set_project_concurrency, _) = _get_registry_functions()
 
     name = validate_project_name(name)
     project_dir = get_project_path(name)

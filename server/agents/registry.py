@@ -132,28 +132,56 @@ def get_registry_path() -> Path:
 
 
 def _get_engine():
+    """Initialize and return database engine for project registry.
+    
+    Handles both PostgreSQL (Supabase) and SQLite (local fallback).
+    Properly configures sslmode only for PostgreSQL.
+    """
     global _engine, _SessionLocal
 
-    # Double-checked locking for thread safety
     if _engine is None:
         with _engine_lock:
             if _engine is None:
-                # Check for global DATABASE_URL (e.g. Supabase)
                 db_url = os.getenv("DATABASE_URL")
+                
                 if db_url:
-                    # Fix for postgres:// vs postgresql://
+                    # ===== POSTGRES PATH (Supabase) =====
                     if db_url.startswith("postgres://"):
                         db_url = db_url.replace("postgres://", "postgresql://", 1)
-                    # Add sslmode if not sqlite
-                    if not db_url.startswith("sqlite") and "sslmode" not in db_url:
-                        if "?" in db_url:
-                            db_url += "&sslmode=require"
-                        else:
-                            db_url += "?sslmode=require"
                     
-                    _engine = create_engine(db_url, pool_pre_ping=True)
-                    logger.info("Initialized registry using DATABASE_URL")
+                    # CRITICAL: Only add sslmode to PostgreSQL URLs, never to SQLite
+                    if db_url.startswith("postgresql"):
+                        if "sslmode" not in db_url:
+                            if "?" in db_url:
+                                db_url += "&sslmode=require"
+                            else:
+                                db_url += "?sslmode=require"
+                        
+                        # PostgreSQL engine with PgBouncer compatibility
+                        engine_kwargs = {
+                            "pool_pre_ping": True,
+                            "pool_size": 5,
+                            "max_overflow": 10,
+                            "pool_recycle": 3600,
+                            "connect_args": {
+                                "sslmode": "require",
+                                "connect_timeout": 10,
+                            }
+                        }
+                        _engine = create_engine(db_url, **engine_kwargs)
+                        logger.info("Initialized registry using Supabase PostgreSQL")
+                    else:
+                        # Fallback for local dev if DATABASE_URL is SQLite
+                        _engine = create_engine(
+                            db_url,
+                            connect_args={
+                                "check_same_thread": False,
+                                "timeout": SQLITE_TIMEOUT,
+                            }
+                        )
+                        logger.info("Initialized registry using local SQLite (via DATABASE_URL)")
                 else:
+                    # ===== SQLITE FALLBACK (Local dev default) =====
                     db_path = get_registry_path()
                     db_url = f"sqlite:///{db_path.as_posix()}"
                     _engine = create_engine(
@@ -279,6 +307,19 @@ def list_registered_projects() -> dict[str, dict[str, Any]]:
             }
             for p in projects
         }
+    finally:
+        session.close()
+
+
+def get_project_id_from_name(name: str) -> uuid.UUID | str | None:
+    """Get project UUID from registry by name."""
+    _, SessionLocal = _get_engine()
+    session = SessionLocal()
+    try:
+        project = session.query(Project).filter(Project.name == name).first()
+        if project is None:
+            return None
+        return project.id
     finally:
         session.close()
 

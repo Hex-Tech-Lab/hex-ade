@@ -14,6 +14,11 @@ import sys
 from contextlib import asynccontextmanager
 from pathlib import Path
 
+# Fix relative imports for main.py execution
+sys.path.insert(0, str(Path(__file__).parent))
+
+
+
 # Fix for Windows subprocess support in asyncio
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
@@ -69,24 +74,39 @@ UI_DIST_DIR = ROOT_DIR / "ui" / "dist"
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Lifespan context manager for startup and shutdown."""
+    import asyncio
+
     # Startup - clean up orphaned lock files from previous runs
     cleanup_orphaned_locks()
     cleanup_orphaned_devserver_locks()
 
-    # Start the scheduler service
+    # Start the scheduler service with timeout
     scheduler = get_scheduler()
-    await scheduler.start()
+    try:
+        # Set a 30-second timeout for scheduler startup
+        await asyncio.wait_for(scheduler.start(), timeout=30.0)
+    except asyncio.TimeoutError:
+        logger.warning("Scheduler startup timed out (>30s), continuing anyway")
+    except Exception as e:
+        logger.error(f"Scheduler startup error: {e}, continuing anyway")
 
     yield
 
     # Shutdown - cleanup scheduler first to stop triggering new starts
-    await cleanup_scheduler()
+    try:
+        await cleanup_scheduler()
+    except Exception as e:
+        logger.warning(f"Scheduler cleanup error: {e}")
+
     # Then cleanup all running agents, sessions, terminals, and dev servers
-    await cleanup_all_managers()
-    await cleanup_assistant_sessions()
-    await cleanup_all_expand_sessions()
-    await cleanup_all_terminals()
-    await cleanup_all_devservers()
+    try:
+        await cleanup_all_managers()
+        await cleanup_assistant_sessions()
+        await cleanup_all_expand_sessions()
+        await cleanup_all_terminals()
+        await cleanup_all_devservers()
+    except Exception as e:
+        logger.warning(f"Cleanup error: {e}")
 
 
 # Create FastAPI app
@@ -147,7 +167,7 @@ app.add_middleware(
         "https://ade.getmytestdrive.com",
         "https://ade-api.getmytestdrive.com",
         "http://localhost:3000",
-        "http://127.0.0.1:3000"
+        "http://127.0.0.1:3000",
     ],
     allow_credentials=True,
     allow_methods=["*"],

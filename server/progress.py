@@ -3,41 +3,42 @@ Progress Tracking Utilities
 ===========================
 
 Functions for tracking and displaying progress of the autonomous coding agent.
-Uses direct SQLite access for database queries.
+Now queries Supabase Postgres Features table.
 """
 
 import json
 import os
 import urllib.request
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 
 WEBHOOK_URL = os.environ.get("PROGRESS_N8N_WEBHOOK_URL")
 PROGRESS_CACHE_FILE = ".progress_cache"
 
+logger = logging.getLogger(__name__)
 
 def has_features(project_dir: Path) -> bool:
     """
     Check if the project has features in the database.
+    
+    Features are now stored in Supabase Postgres, not per-project SQLite.
     """
-    from .api.database import Feature, create_database, IS_SQLITE
-    from .autocoder_paths import get_features_db_path
-
-    # If using SQLite, check legacy JSON and local DB file
-    if IS_SQLITE:
-        json_file = project_dir / "feature_list.json"
-        if json_file.exists():
-            return True
-
-        db_file = get_features_db_path(project_dir)
-        if not db_file.exists():
-            return False
+    from .api.database import Feature, create_database
+    from .agents.registry import get_project_id_from_name
 
     try:
+        project_name = project_dir.name
+        project_id = get_project_id_from_name(project_name)
+        if not project_id:
+            return False
+
         _, SessionLocal = create_database(project_dir)
         with SessionLocal() as session:
             from sqlalchemy import func
-            count = session.query(func.count(Feature.id)).scalar()
+            count = session.query(func.count(Feature.id)).filter(
+                Feature.project_id == project_id
+            ).scalar()
             return bool(count > 0)
     except Exception:
         return False
@@ -45,17 +46,19 @@ def has_features(project_dir: Path) -> bool:
 
 def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
     """
-    Count passing, in_progress, and total tests.
+    Count passing, in_progress, and total tests for a project.
+    
+    Now queries Supabase Postgres Features table filtered by project_id.
     """
-    from .api.database import Feature, create_database, IS_SQLITE
-    from .autocoder_paths import get_features_db_path
-
-    if IS_SQLITE:
-        db_file = get_features_db_path(project_dir)
-        if not db_file.exists():
-            return 0, 0, 0
+    from .api.database import Feature, create_database
+    from .agents.registry import get_project_id_from_name
 
     try:
+        project_name = project_dir.name
+        project_id = get_project_id_from_name(project_name)
+        if not project_id:
+            return 0, 0, 0
+
         _, SessionLocal = create_database(project_dir)
         with SessionLocal() as session:
             from sqlalchemy import func, case
@@ -63,14 +66,14 @@ def count_passing_tests(project_dir: Path) -> tuple[int, int, int]:
                 func.count(Feature.id).label('total'),
                 func.sum(case((Feature.passes == True, 1), else_=0)).label('passing'),
                 func.sum(case((Feature.in_progress == True, 1), else_=0)).label('in_progress')
-            ).first()
+            ).filter(Feature.project_id == project_id).first()
 
             total = result.total or 0
             passing = int(result.passing or 0)
             in_progress = int(result.in_progress or 0)
             return passing, in_progress, total
     except Exception as e:
-        print(f"[Database error in count_passing_tests: {e}]")
+        logger.error(f"Database error in count_passing_tests: {e}")
         return 0, 0, 0
 
 
@@ -78,23 +81,27 @@ def get_all_passing_features(project_dir: Path) -> list[dict]:
     """
     Get all passing features for webhook notifications.
     """
-    from .api.database import Feature, create_database, IS_SQLITE
-    from .autocoder_paths import get_features_db_path
-
-    if IS_SQLITE:
-        db_file = get_features_db_path(project_dir)
-        if not db_file.exists():
-            return []
+    from .api.database import Feature, create_database
+    from .agents.registry import get_project_id_from_name
 
     try:
+        project_name = project_dir.name
+        project_id = get_project_id_from_name(project_name)
+        if not project_id:
+            return []
+
         _, SessionLocal = create_database(project_dir)
         with SessionLocal() as session:
-            features = session.query(Feature).filter(Feature.passes == True).order_by(Feature.priority.asc()).all()
+            features = session.query(Feature).filter(
+                Feature.project_id == project_id,
+                Feature.passes == True
+            ).order_by(Feature.priority.asc()).all()
             return [
                 {"id": f.id, "category": f.category, "name": f.name}
                 for f in features
             ]
-    except Exception:
+    except Exception as e:
+        logger.error(f"Error in get_all_passing_features: {e}")
         return []
 
 
@@ -124,7 +131,6 @@ def send_progress_webhook(passing: int, total: int, project_dir: Path) -> None:
         current_passing_ids = []
 
         # Detect transition from old cache format (had count but no passing_ids)
-        # In this case, we can't reliably identify which specific tests are new
         is_old_cache_format = len(previous_passing_ids) == 0 and previous > 0
 
         # Get all passing features via direct database access

@@ -3,6 +3,7 @@ Features Router
 ===============
 
 API endpoints for feature/test case management.
+Now backed exclusively by Supabase PostgreSQL.
 """
 
 import logging
@@ -32,25 +33,26 @@ from ..utils.response import success_response
 # Lazy imports to avoid circular dependencies
 _create_database = None
 _Feature = None
-_IS_SQLITE = True
 
 logger = logging.getLogger(__name__)
 
 
 def _get_db_classes():
-    """Lazy import of database classes."""
-    global _create_database, _Feature, _IS_SQLITE
+    """Get Feature class and create_database function.
+    
+    Note: IS_SQLITE is removed (Features are now Postgres-only).
+    """
+    global _create_database, _Feature
     if _create_database is None:
         import sys
         from pathlib import Path
         root = Path(__file__).parent.parent.parent
         if str(root) not in sys.path:
             sys.path.insert(0, str(root))
-        from api.database import Feature, create_database, IS_SQLITE
+        from api.database import Feature, create_database
         _create_database = create_database
         _Feature = Feature
-        _IS_SQLITE = IS_SQLITE
-    return _create_database, _Feature, _IS_SQLITE
+    return _create_database, _Feature
 
 
 router = APIRouter(prefix="/api/projects/{project_name}/features", tags=["features"])
@@ -130,17 +132,18 @@ async def list_features(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature, IS_SQLITE = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
 
-    if IS_SQLITE:
-        from ..autocoder_paths import get_features_db_path
-        db_file = get_features_db_path(project_dir)
-        if not db_file.exists():
-            return success_response({"pending": [], "in_progress": [], "done": []}, meta={"count": 0})
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            all_features = session.query(Feature).order_by(Feature.priority).all()
+            all_features = session.query(Feature).filter(
+                Feature.project_id == project_id
+            ).order_by(Feature.priority).all()
 
             # Compute passing IDs for blocked status calculation
             passing_ids = {f.id for f in all_features if f.passes}
@@ -182,19 +185,27 @@ async def create_feature(project_name: str, feature: FeatureCreate):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
             # Get next priority if not specified
             if feature.priority is None:
-                max_priority = session.query(Feature).order_by(Feature.priority.desc()).first()
+                max_priority = session.query(Feature).filter(
+                    Feature.project_id == project_id
+                ).order_by(Feature.priority.desc()).first()
                 priority = (max_priority.priority + 1) if max_priority else 1
             else:
                 priority = feature.priority
 
             # Create new feature
             db_feature = Feature(
+                project_id=project_id,
                 priority=priority,
                 category=feature.category,
                 name=feature.name,
@@ -226,18 +237,6 @@ async def create_feature(project_name: str, feature: FeatureCreate):
 async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
     """
     Create multiple features at once.
-
-    Features are assigned sequential priorities starting from:
-    - starting_priority if specified (must be >= 1)
-    - max(existing priorities) + 1 if not specified
-
-    This is useful for:
-    - Expanding a project with new features via AI
-    - Importing features from external sources
-    - Batch operations
-
-    Returns:
-        {"created": N, "features": [...]}
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -248,6 +247,11 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
     if not bulk.features:
         return FeatureBulkCreateResponse(created=0, features=[])
 
@@ -255,19 +259,16 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
     if bulk.starting_priority is not None and bulk.starting_priority < 1:
         raise HTTPException(status_code=400, detail="starting_priority must be >= 1")
 
-    _, Feature = _get_db_classes()
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            # Determine starting priority
-            # Note: SQLite uses file-level locking, not row-level locking, so we rely on
-            # SQLite's transaction isolation. Concurrent bulk creates may get overlapping
-            # priorities, but this is acceptable since priorities can be reordered.
             if bulk.starting_priority is not None:
                 current_priority = bulk.starting_priority
             else:
                 max_priority_feature = (
                     session.query(Feature)
+                    .filter(Feature.project_id == project_id)
                     .order_by(Feature.priority.desc())
                     .first()
                 )
@@ -277,6 +278,7 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
 
             for feature_data in bulk.features:
                 db_feature = Feature(
+                    project_id=project_id,
                     priority=current_priority,
                     category=feature_data.category,
                     name=feature_data.name,
@@ -293,7 +295,7 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
 
             session.commit()
 
-            # Query created features by their IDs (avoids relying on priority range)
+            # Query created features by their IDs
             created_features = []
             for db_feature in session.query(Feature).filter(
                 Feature.id.in_(created_ids)
@@ -314,9 +316,6 @@ async def create_features_bulk(project_name: str, bulk: FeatureBulkCreate):
 @router.get("/graph", response_model=StandardResponse)
 async def get_dependency_graph(project_name: str):
     """Return dependency graph data for visualization.
-
-    Returns nodes (features) and edges (dependencies) suitable for
-    rendering with React Flow or similar graph libraries.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -327,17 +326,18 @@ async def get_dependency_graph(project_name: str):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature, IS_SQLITE = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
 
-    if IS_SQLITE:
-        from ..autocoder_paths import get_features_db_path
-        db_file = get_features_db_path(project_dir)
-        if not db_file.exists():
-            return DependencyGraphResponse(nodes=[], edges=[])
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            all_features = session.query(Feature).all()
+            all_features = session.query(Feature).filter(
+                Feature.project_id == project_id
+            ).all()
             passing_ids = {f.id for f in all_features if f.passes}
 
             nodes = []
@@ -394,17 +394,19 @@ async def get_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature, IS_SQLITE = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
 
-    if IS_SQLITE:
-        from ..autocoder_paths import get_features_db_path
-        db_file = get_features_db_path(project_dir)
-        if not db_file.exists():
-            raise HTTPException(status_code=404, detail="No features database found")
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
 
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
@@ -421,10 +423,6 @@ async def get_feature(project_name: str, feature_id: int):
 async def update_feature(project_name: str, feature_id: int, update: FeatureUpdate):
     """
     Update a feature's details.
-
-    Only features that are not yet completed (passes=False) can be edited.
-    This allows users to provide corrections or additional instructions
-    when the agent is stuck or implementing a feature incorrectly.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -435,11 +433,19 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
 
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
@@ -469,7 +475,7 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
             session.refresh(feature)
 
             # Compute passing IDs for response
-            all_features = session.query(Feature).all()
+            all_features = session.query(Feature).filter(Feature.project_id == project_id).all()
             passing_ids = {f.id for f in all_features if f.passes}
 
             return success_response(feature_to_response(feature, passing_ids))
@@ -482,11 +488,7 @@ async def update_feature(project_name: str, feature_id: int, update: FeatureUpda
 
 @router.delete("/{feature_id}", response_model=StandardResponse)
 async def delete_feature(project_name: str, feature_id: int):
-    """Delete a feature and clean up references in other features' dependencies.
-
-    When a feature is deleted, any other features that depend on it will have
-    that dependency removed from their dependencies list. This prevents orphaned
-    dependencies that would permanently block features.
+    """Delete a feature.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -497,21 +499,27 @@ async def delete_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
 
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
             # Clean up dependency references in other features
-            # This prevents orphaned dependencies that would block features forever
             affected_features = []
-            for f in session.query(Feature).all():
+            for f in session.query(Feature).filter(Feature.project_id == project_id).all():
                 if f.dependencies and feature_id in f.dependencies:
-                    # Remove the deleted feature from this feature's dependencies
                     deps = [d for d in f.dependencies if d != feature_id]
                     f.dependencies = deps if deps else None
                     affected_features.append(f.id)
@@ -535,9 +543,6 @@ async def delete_feature(project_name: str, feature_id: int):
 async def skip_feature(project_name: str, feature_id: int):
     """
     Mark a feature as skipped by moving it to the end of the priority queue.
-
-    This doesn't delete the feature but gives it a very high priority number
-    so it will be processed last.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -548,17 +553,26 @@ async def skip_feature(project_name: str, feature_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
 
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            # Set priority to max + 1 to push to end (consistent with MCP server)
-            max_priority = session.query(Feature).order_by(Feature.priority.desc()).first()
+            max_priority = session.query(Feature).filter(
+                Feature.project_id == project_id
+            ).order_by(Feature.priority.desc()).first()
             feature.priority = (max_priority.priority + 1) if max_priority else 1
 
             session.commit()
@@ -589,13 +603,9 @@ def _get_dependency_resolver():
 @router.post("/{feature_id}/dependencies/{dep_id}")
 async def add_dependency(project_name: str, feature_id: int, dep_id: int):
     """Add a dependency relationship between features.
-
-    The dep_id feature must be completed before feature_id can be started.
-    Validates: self-reference, existence, circular dependencies, max limit.
     """
     project_name = validate_project_name(project_name)
 
-    # Security: Self-reference check
     if feature_id == dep_id:
         raise HTTPException(status_code=400, detail="A feature cannot depend on itself")
 
@@ -607,13 +617,24 @@ async def add_dependency(project_name: str, feature_id: int, dep_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
     would_create_circular_dependency, MAX_DEPENDENCIES_PER_FEATURE = _get_dependency_resolver()
-    _, Feature = _get_db_classes()
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
-            dependency = session.query(Feature).filter(Feature.id == dep_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
+            dependency = session.query(Feature).filter(
+                Feature.id == dep_id,
+                Feature.project_id == project_id
+            ).first()
 
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
@@ -622,16 +643,13 @@ async def add_dependency(project_name: str, feature_id: int, dep_id: int):
 
             current_deps = feature.dependencies or []
 
-            # Security: Limit check
             if len(current_deps) >= MAX_DEPENDENCIES_PER_FEATURE:
                 raise HTTPException(status_code=400, detail=f"Maximum {MAX_DEPENDENCIES_PER_FEATURE} dependencies allowed")
 
             if dep_id in current_deps:
                 raise HTTPException(status_code=400, detail="Dependency already exists")
 
-            # Security: Circular dependency check
-            # source_id = feature_id (gaining dep), target_id = dep_id (being depended upon)
-            all_features = [f.to_dict() for f in session.query(Feature).all()]
+            all_features = [f.to_dict() for f in session.query(Feature).filter(Feature.project_id == project_id).all()]
             if would_create_circular_dependency(all_features, feature_id, dep_id):
                 raise HTTPException(status_code=400, detail="Would create circular dependency")
 
@@ -659,11 +677,19 @@ async def remove_dependency(project_name: str, feature_id: int, dep_id: int):
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
-    _, Feature = _get_db_classes()
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
@@ -685,9 +711,7 @@ async def remove_dependency(project_name: str, feature_id: int, dep_id: int):
 
 @router.put("/{feature_id}/dependencies")
 async def set_dependencies(project_name: str, feature_id: int, update: DependencyUpdate):
-    """Set all dependencies for a feature at once, replacing any existing.
-
-    Validates: self-reference, existence of all dependencies, circular dependencies, max limit.
+    """Set all dependencies for a feature at once.
     """
     project_name = validate_project_name(project_name)
     project_dir = _get_project_path(project_name)
@@ -698,34 +722,37 @@ async def set_dependencies(project_name: str, feature_id: int, update: Dependenc
     if not project_dir.exists():
         raise HTTPException(status_code=404, detail="Project directory not found")
 
+    from ..agents.registry import get_project_id_from_name
+    project_id = get_project_id_from_name(project_name)
+    if not project_id:
+        raise HTTPException(status_code=404, detail="Project ID not found")
+
     dependency_ids = update.dependency_ids
 
-    # Security: Self-reference check
     if feature_id in dependency_ids:
         raise HTTPException(status_code=400, detail="A feature cannot depend on itself")
 
-    # Check for duplicates
     if len(dependency_ids) != len(set(dependency_ids)):
         raise HTTPException(status_code=400, detail="Duplicate dependencies not allowed")
 
     would_create_circular_dependency, _ = _get_dependency_resolver()
-    _, Feature = _get_db_classes()
+    _create_database, Feature = _get_db_classes()
 
     try:
         with get_db_session(project_dir) as session:
-            feature = session.query(Feature).filter(Feature.id == feature_id).first()
+            feature = session.query(Feature).filter(
+                Feature.id == feature_id,
+                Feature.project_id == project_id
+            ).first()
             if not feature:
                 raise HTTPException(status_code=404, detail=f"Feature {feature_id} not found")
 
-            # Validate all dependencies exist
-            all_feature_ids = {f.id for f in session.query(Feature).all()}
+            all_feature_ids = {f.id for f in session.query(Feature).filter(Feature.project_id == project_id).all()}
             missing = [d for d in dependency_ids if d not in all_feature_ids]
             if missing:
                 raise HTTPException(status_code=400, detail=f"Dependencies not found: {missing}")
 
-            # Check for circular dependencies
-            all_features = [f.to_dict() for f in session.query(Feature).all()]
-            # Temporarily update the feature's dependencies for cycle check
+            all_features = [f.to_dict() for f in session.query(Feature).filter(Feature.project_id == project_id).all()]
             test_features = []
             for f in all_features:
                 if f["id"] == feature_id:
@@ -734,14 +761,12 @@ async def set_dependencies(project_name: str, feature_id: int, update: Dependenc
                     test_features.append(f)
 
             for dep_id in dependency_ids:
-                # source_id = feature_id (gaining dep), target_id = dep_id (being depended upon)
                 if would_create_circular_dependency(test_features, feature_id, dep_id):
                     raise HTTPException(
                         status_code=400,
                         detail=f"Cannot add dependency {dep_id}: would create circular dependency"
                     )
 
-            # Set dependencies
             feature.dependencies = sorted(dependency_ids) if dependency_ids else None
             session.commit()
 

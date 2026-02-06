@@ -20,6 +20,7 @@ new layout safely, with full integrity checks for SQLite databases.
 import logging
 import shutil
 import sqlite3
+import warnings
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -29,6 +30,8 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 _GITIGNORE_CONTENT = """\
 # Autocoder runtime files
+# NOTE: features.db files are deprecated (moved to Supabase Postgres)
+# Keeping these entries for projects with legacy SQLite files
 features.db
 features.db-wal
 features.db-shm
@@ -108,7 +111,16 @@ def ensure_autocoder_dir(project_dir: Path) -> Path:
 # ---------------------------------------------------------------------------
 
 def get_features_db_path(project_dir: Path) -> Path:
-    """Resolve the path to ``features.db``."""
+    """DEPRECATED: Features are now in Supabase Postgres, not per-project SQLite.
+    
+    This function is kept for backward compatibility only.
+    Calling code should use api.database.create_database() instead.
+    """
+    warnings.warn(
+        "get_features_db_path() is deprecated. Features are now in Supabase Postgres.",
+        DeprecationWarning,
+        stacklevel=2
+    )
     return _resolve_path(project_dir, "features.db")
 
 

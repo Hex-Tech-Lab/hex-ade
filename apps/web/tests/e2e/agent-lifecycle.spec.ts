@@ -28,13 +28,13 @@ test.describe('Agent Lifecycle E2E', () => {
 
     const startButton = page.locator('data-testid=agent-start-button').or(
       page.locator('button:has-text("Start Agent")')
-    )
+    ).first()
 
     await expect(startButton).toBeVisible()
 
     const concurrencySlider = page.locator('role=slider').or(
       page.locator('.MuiSlider-root')
-    )
+    ).first()
 
     if (await concurrencySlider.isVisible()) {
       await expect(concurrencySlider).toBeVisible()
@@ -48,7 +48,7 @@ test.describe('Agent Lifecycle E2E', () => {
           page.locator('text=Loading')
         )
       )
-    )
+    ).first()
 
     await expect(statusBadge).toBeVisible()
   })
@@ -57,7 +57,7 @@ test.describe('Agent Lifecycle E2E', () => {
     // Pause/resume is not always enabled
     const pauseButton = page.locator('data-testid=agent-pause-button').or(
       page.locator('button:has-text("Pause")')
-    )
+    ).first()
 
     if (await pauseButton.isVisible()) {
       await expect(pauseButton).toBeVisible()
@@ -70,7 +70,7 @@ test.describe('Agent Lifecycle E2E', () => {
       page.locator('text=mission').or(
         page.locator('[data-action="mission-control"]')
       )
-    )
+    ).first()
 
     if (await missionControl.isVisible()) {
       await expect(missionControl).toBeVisible()
@@ -84,21 +84,21 @@ test.describe('Feature Management E2E', () => {
   })
 
   test('should display Kanban board with three columns', async ({ page }) => {
-    await expect(page.locator('text=Pending')).toBeVisible()
-    await expect(page.locator('text=In Progress')).toBeVisible()
-    await expect(page.locator('text=Completed')).toBeVisible()
+    await expect(page.locator('text=Pending').first()).toBeVisible()
+    await expect(page.locator('text=In Progress').first()).toBeVisible()
+    await expect(page.locator('text=Completed').first()).toBeVisible()
   })
 
   test('should allow specification creation modal', async ({ page }) => {
     const specButton = page.locator('button:has-text("Create Specification")').or(
       page.locator('button').filter({ hasText: 'Magic' })
-    )
+    ).first()
 
     if (await specButton.isEnabled()) {
       await specButton.click()
 
       // Should open modal or navigate to spec creation
-      await expect(page.locator('text=specification').or(page.locator('text=project')).or(page.locator('modal'))).toBeVisible()
+      await expect(page.locator('text=specification').or(page.locator('text=project')).or(page.locator('modal')).first()).toBeVisible()
     }
   })
 
@@ -108,7 +108,7 @@ test.describe('Feature Management E2E', () => {
       page.locator('.feature-card').or(
         page.locator('[data-feature]')
       )
-    )
+    ).first()
 
     // It's OK if no features exist yet - just check the structure
     if (await featureCards.count() > 0) {
@@ -122,7 +122,7 @@ test.describe('Feature Management E2E', () => {
       page.locator('[data-testid=metrics-bar]').or(
         page.locator('text=0').or(page.locator('text=100'))
       )
-    )
+    ).first()
 
     await expect(metrics).toBeVisible()
   })
@@ -130,7 +130,7 @@ test.describe('Feature Management E2E', () => {
   test('should allow expanding project features', async ({ page }) => {
     const expandButton = page.locator('button:has-text("Expand Project")').or(
       page.locator('button').filter({ hasText: /expand/i })
-    )
+    ).first()
 
     if (await expandButton.isVisible()) {
       await expect(expandButton).toBeVisible()
