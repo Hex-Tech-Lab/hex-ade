@@ -74,7 +74,7 @@ const getWebSocketUrl = (endpoint: string): string => {
     return `ws://localhost:8888${endpoint}`;
   }
   
-  return `wss://ade-api.getmytestdrive.com${endpoint}`;
+  return `wss://hex-ade-backend.fly.dev${endpoint}`;
 };
 
 export function useProjectWebSocket(projectName: string | null) {

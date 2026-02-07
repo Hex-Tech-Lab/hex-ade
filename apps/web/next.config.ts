@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
         source: '/api/:path*',
         destination: process.env.NODE_ENV === 'development' 
           ? 'http://127.0.0.1:8888/api/:path*' 
-          : 'https://hex-ade-api.onrender.com/api/:path*',
+          : 'https://hex-ade-backend.fly.dev/api/:path*',
       }
     ];
   },
